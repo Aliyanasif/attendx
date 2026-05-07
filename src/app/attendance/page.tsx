@@ -2,152 +2,220 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  where, 
-  onSnapshot, 
-  updateDoc, 
-  doc, 
-  Timestamp, 
-  limit 
-} from "firebase/firestore";
-import { Clock, Play, Square, CheckCircle2, Loader2 } from "lucide-react";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { useAuth } from "@/context/AuthContext";
+import { Clock, MapPin, CheckCircle2, Loader2, Fingerprint, MapPinned } from "lucide-react";
+import { notify } from "@/lib/notify";
+import dayjs from "dayjs";
 
 export default function AttendancePage() {
-  const [recordId, setRecordId] = useState<string | null>(null);
-  const [isClockedIn, setIsClockedIn] = useState(false);
+  const { user, userData, loading: authLoading } = useAuth();
+  
+  const [currentTime, setCurrentTime] = useState(new Date());
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [isPunching, setIsPunching] = useState(false); // Punch loading state
+  const [status, setStatus] = useState<"not_clocked_in" | "clocked_in" | "completed">("not_clocked_in");
+  const [clockInTime, setClockInTime] = useState<string | null>(null);
+  const [clockOutTime, setClockOutTime] = useState<string | null>(null);
 
-  // Aaj ki date (YYYY-MM-DD format)
-  const todayDate = new Date().toISOString().split('T')[0];
+  const todayDate = dayjs().format("YYYY-MM-DD");
 
+  // 🕒 Live Clock
   useEffect(() => {
-    // Check karein ke kya aaj ka koi record pehle se majood hai
-    const q = query(
-      collection(db, "attendance"),
-      where("date", "==", todayDate),
-      where("employeeName", "==", "Aliyan Asif"), // Filhaal hardcoded
-      limit(1)
-    );
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const attendanceDoc = snapshot.docs[0];
-        const data = attendanceDoc.data();
-        
-        setRecordId(attendanceDoc.id);
-        // Agar clockOut null hai, iska matlab hai banda abhi bhi clocked in hai
-        setIsClockedIn(!data.clockOut);
+  // 📥 Fetch Today's Attendance Status
+  useEffect(() => {
+    const fetchTodayStatus = async () => {
+      if (!user) return;
+      try {
+        const attRef = doc(db, "attendance", `${user.uid}_${todayDate}`);
+        const attSnap = await getDoc(attRef);
+
+        if (attSnap.exists()) {
+          const data = attSnap.data();
+          if (data.clockIn) {
+            setClockInTime(dayjs(data.clockIn.toDate()).format("hh:mm A"));
+            setStatus("clocked_in");
+          }
+          if (data.clockOut) {
+            setClockOutTime(dayjs(data.clockOut.toDate()).format("hh:mm A"));
+            setStatus("completed");
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching attendance:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTodayStatus();
+  }, [user, todayDate]);
+
+  // 📍 Helper Function to Get GPS Location
+  const getLocation = (): Promise<{ lat: number; lng: number }> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject("Geolocation is not supported by your browser.");
       } else {
-        setIsClockedIn(false);
-        setRecordId(null);
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            resolve({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            });
+          },
+          (error) => {
+            reject("Location access denied! Please enable GPS.");
+          },
+          { enableHighAccuracy: true } // Premium accuracy
+        );
       }
-      setLoading(false);
     });
-
-    return () => unsubscribe();
-  }, [todayDate]);
-
-  const handleClockAction = async () => {
-    setActionLoading(true);
-    try {
-      if (!isClockedIn) {
-        // --- CLOCK IN LOGIC ---
-        await addDoc(collection(db, "attendance"), {
-          employeeName: "Aliyan Asif", // Real app mein ye auth se aayega
-          date: todayDate,
-          clockIn: Timestamp.now(),
-          clockOut: null,
-          status: "Present",
-        });
-      } else if (recordId) {
-        // --- CLOCK OUT LOGIC ---
-        const docRef = doc(db, "attendance", recordId);
-        await updateDoc(docRef, {
-          clockOut: Timestamp.now(),
-        });
-        alert("Shift ended! Well done today. ✅");
-      }
-    } catch (error) {
-      console.error("Firebase Error:", error);
-      alert("Something went wrong!");
-    }
-    setActionLoading(false);
   };
 
-  if (loading) {
+  // 👆 Handle Clock In / Out with GPS
+  const handlePunch = async () => {
+    if (!user) return;
+    setIsPunching(true);
+
+    try {
+      // 1. Pehle Location Fetch Karein
+      notify("Verifying your live location... 📍");
+      const userLocation = await getLocation();
+
+      // 2. Firebase Document Reference
+      const attRef = doc(db, "attendance", `${user.uid}_${todayDate}`);
+      const now = new Date();
+
+      if (status === "not_clocked_in") {
+        // Clock In Logic (Time + Location save)
+        await setDoc(attRef, {
+          uid: user.uid,
+          employeeName: userData?.name || "Anonymous",
+          date: todayDate,
+          clockIn: now,
+          clockInLocation: userLocation, // 📍 GPS Saved!
+          clockOut: null,
+          status: "Present"
+        });
+        setClockInTime(dayjs(now).format("hh:mm A"));
+        setStatus("clocked_in");
+        notify("Clocked In Successfully! 🟢");
+      } 
+      else if (status === "clocked_in") {
+        // Clock Out Logic (Time + Location save)
+        await updateDoc(attRef, {
+          clockOut: now,
+          clockOutLocation: userLocation, // 📍 GPS Saved!
+        });
+        setClockOutTime(dayjs(now).format("hh:mm A"));
+        setStatus("completed");
+        notify("Clocked Out Successfully! 🔴");
+      }
+    } catch (error: any) {
+      console.error("Punch Error:", error);
+      // Agar user ne location block ki hai toh error dikhayein
+      notify(typeof error === "string" ? error : "Failed to punch in/out. Try again.");
+    } finally {
+      setIsPunching(false);
+    }
+  };
+
+  if (authLoading || loading) {
     return (
-      <div className="h-full flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="animate-spin text-blue-600" size={40} />
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10 py-10 text-center animate-in zoom-in duration-500">
-      <div className="space-y-2">
-        <h1 className="text-4xl font-black text-gray-900 tracking-tight">Shift Control</h1>
-        <p className="text-gray-500 text-lg font-medium">Aliyan, mark your attendance for today.</p>
+    <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in duration-700 mt-4 pb-20">
+      
+      {/* HEADER */}
+      <div>
+        <h1 className="text-4xl md:text-5xl font-black italic uppercase text-gray-900 tracking-tighter leading-none">
+          Live <span className="text-blue-600">Punch</span>
+        </h1>
+        <p className="text-gray-400 font-bold text-[10px] md:text-xs uppercase tracking-[0.3em] ml-1 mt-2 flex items-center gap-2">
+          <MapPinned size={12} className="text-blue-500" /> GPS Tracking Enabled
+        </p>
       </div>
 
-      <div className="bg-white p-12 rounded-[48px] shadow-2xl shadow-blue-100 border border-gray-50 inline-block w-full max-w-md relative overflow-hidden group">
-        <div className="relative z-10">
-          <div className={`w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8 transition-all duration-500 ${isClockedIn ? "bg-green-50 rotate-12 shadow-inner" : "bg-blue-50"}`}>
-            {isClockedIn ? (
-              <CheckCircle2 className="text-green-600" size={48} />
-            ) : (
-              <Clock className="text-blue-600" size={48} />
-            )}
-          </div>
-          
-          <p className="text-gray-400 font-black uppercase tracking-[0.2em] text-[10px]">Session Status</p>
-          <h2 className={`text-3xl font-black mt-2 transition-colors ${isClockedIn ? "text-green-600" : "text-gray-900"}`}>
-            {isClockedIn ? "WORKING" : "NOT STARTED"}
-          </h2>
-
-          <div className="mt-12">
-            <button 
-              onClick={handleClockAction}
-              disabled={actionLoading}
-              className={`w-full py-6 rounded-3xl font-black text-xl transition-all flex items-center justify-center gap-3 shadow-2xl active:scale-95 disabled:opacity-50 ${
-                isClockedIn 
-                ? "bg-red-50 text-red-600 hover:bg-red-100 shadow-red-100" 
-                : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200"
-              }`}
-            >
-              {actionLoading ? (
-                <Loader2 className="animate-spin" size={24} />
-              ) : isClockedIn ? (
-                <>
-                  <Square fill="currentColor" size={24} />
-                  <span>Clock Out</span>
-                </>
-              ) : (
-                <>
-                  <Play fill="currentColor" size={24} />
-                  <span>Clock In Now</span>
-                </>
-              )}
-            </button>
-          </div>
-        </div>
+      {/* MAIN CLOCK CARD */}
+      <div className="bg-white rounded-[50px] p-8 md:p-12 shadow-2xl border border-gray-100 flex flex-col items-center justify-center text-center relative overflow-hidden">
         
-        {isClockedIn && (
-          <div className="absolute inset-0 bg-green-500/5 animate-pulse pointer-events-none"></div>
-        )}
-      </div>
+        {/* Decorative Background Circles */}
+        <div className="absolute top-0 left-0 w-64 h-64 bg-blue-50 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 opacity-60"></div>
+        <div className="absolute bottom-0 right-0 w-64 h-64 bg-green-50 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 opacity-60"></div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left max-w-md mx-auto">
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Office Time</p>
-          <p className="text-xl font-bold text-gray-800">09:00 AM - 06:00 PM</p>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Current Date</p>
-          <p className="text-xl font-bold text-blue-600">{todayDate}</p>
+        <div className="relative z-10 space-y-8 w-full max-w-sm">
+          
+          {/* DIGITAL CLOCK */}
+          <div className="space-y-2">
+            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">
+              {dayjs(currentTime).format("dddd, MMMM D, YYYY")}
+            </p>
+            <h2 className="text-6xl md:text-7xl font-black text-gray-900 tracking-tighter italic font-mono">
+              {dayjs(currentTime).format("HH:mm")}
+              <span className="text-2xl text-gray-400 ml-2 animate-pulse">{dayjs(currentTime).format("ss")}</span>
+            </h2>
+          </div>
+
+          {/* ACTION BUTTON */}
+          {status === "completed" ? (
+            <div className="bg-gray-50 border border-gray-100 rounded-[35px] p-8 flex flex-col items-center gap-3">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2">
+                <CheckCircle2 size={32} />
+              </div>
+              <p className="font-black text-gray-900 uppercase italic tracking-wide text-lg">Shift Completed</p>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Location & Time Verified</p>
+            </div>
+          ) : (
+            <button
+              onClick={handlePunch}
+              disabled={isPunching}
+              className={`w-full py-8 rounded-[40px] shadow-xl flex flex-col items-center justify-center gap-4 transition-all duration-300 active:scale-95 group ${
+                status === "not_clocked_in" 
+                  ? "bg-blue-600 hover:bg-blue-700 shadow-blue-200" 
+                  : "bg-red-500 hover:bg-red-600 shadow-red-200"
+              } ${isPunching ? "opacity-70 cursor-not-allowed" : ""}`}
+            >
+              {isPunching ? (
+                <Loader2 size={48} className="text-white/90 animate-spin" />
+              ) : (
+                <Fingerprint size={48} className="text-white/90 group-hover:scale-110 transition-transform duration-300" />
+              )}
+              <span className="text-white font-black uppercase tracking-[0.2em] text-xl italic">
+                {isPunching ? "Verifying..." : status === "not_clocked_in" ? "Clock In Now" : "Clock Out"}
+              </span>
+            </button>
+          )}
+
+          {/* TIMINGS SUMMARY */}
+          <div className="grid grid-cols-2 gap-4 mt-8 pt-8 border-t border-gray-100">
+            <div className="bg-gray-50 p-4 rounded-3xl text-center">
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                <MapPin size={10} /> In Time
+              </p>
+              <p className={`font-black italic ${clockInTime ? 'text-gray-900' : 'text-gray-300'}`}>
+                {clockInTime || "--:--"}
+              </p>
+            </div>
+            <div className="bg-gray-50 p-4 rounded-3xl text-center">
+              <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                <MapPin size={10} /> Out Time
+              </p>
+              <p className={`font-black italic ${clockOutTime ? 'text-gray-900' : 'text-gray-300'}`}>
+                {clockOutTime || "--:--"}
+              </p>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
