@@ -255,7 +255,7 @@ export default function PayrollPage() {
       printWindow.document.write(slipHTML);
       printWindow.document.close();
     } else {
-      notify("Pop-ups blocked! Bhai, browser settings mein pop-ups allow karein PDF download karne ke liye.");
+      notify("Pop-ups are blocked. Please allow pop-ups in your browser settings to generate and download the PDF slip.");
     }
   };
 

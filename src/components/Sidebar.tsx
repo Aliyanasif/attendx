@@ -6,10 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { 
   LayoutDashboard, Users, Clock, CreditCard, Calendar as CalendarIcon, 
   ClipboardCheck, LogOut, ChevronRight, UserCircle,
-  BarChart3, MapPin, History, Send, Menu 
+  BarChart3, MapPin, History, Send, Menu, ShieldCheck 
 } from "lucide-react";
-import { auth, db } from "@/lib/firebase"; // 👈 'db' yahan add kiya hai
-import { collection, query, where, onSnapshot } from "firebase/firestore"; // 👈 Firebase queries
+import { auth, db } from "@/lib/firebase"; 
+import { collection, query, where, onSnapshot } from "firebase/firestore"; 
 import { signOut } from "firebase/auth";
 import { useAuth } from "@/context/AuthContext";
 import { useSidebar } from "@/context/SidebarContext";
@@ -27,15 +27,12 @@ export default function Sidebar() {
 
   // 🚀 Firebase Live Listener for Pending Requests
   useEffect(() => {
-    // Agar user Staff hai toh check mat karo
     if (role === "Staff") return;
 
-    // Listen to Leaves
     const qLeaves = query(collection(db, "leaves"), where("status", "==", "Pending"));
     const unsubLeaves = onSnapshot(qLeaves, (snap) => {
       const leavesCount = snap.size;
       
-      // Listen to Resignations inside so we can combine the count
       const qResign = query(collection(db, "resignations"), where("status", "==", "Pending"));
       const unsubResign = onSnapshot(qResign, (resSnap) => {
         setPendingCount(leavesCount + resSnap.size);
@@ -47,27 +44,38 @@ export default function Sidebar() {
     return () => unsubLeaves();
   }, [role]);
 
+  // 🛡️ Single function for both Desktop and Owner Logic
   const getMenuItems = () => {
+    const OWNER_EMAIL = "aliyanasif503@gmail.com";
+    let items: any[] = [];
+
+    if (userData?.email === OWNER_EMAIL) {
+      items.push({ icon: ShieldCheck, label: "Command", href: "/owner-control" }); 
+    }
+
     if (role === "Admin" || role === "Super Admin" || role === "Manager") {
-      return [
+      items.push(
         { icon: LayoutDashboard, label: "Dashboard", href: "/" },
         { icon: Clock, label: "Attendance Admin", href: "/attendance-mgmt" },
-        // 👇 Yahan humne "badge" ki property add ki hai
         { icon: ClipboardCheck, label: "Requests Hub", href: "/requests-hub", badge: pendingCount > 0 },
         { icon: Send, label: "My Leave Portal", href: "/leaves" },
         { icon: BarChart3, label: "Staff Performance", href: "/performance" },
-        ...(role !== "Super Admin" ? [{ icon: MapPin, label: "Clock In/Out", href: "/attendance" }] : []),
+        // ...(role !== "Super Admin" ? [{ icon: MapPin, label: "Clock In/Out", href: "/attendance" }] : []),
         { icon: Users, label: "Manage Staff", href: "/employees" },
         { icon: CreditCard, label: "Process Payroll", href: "/payroll" },
-        { icon: History, label: "Salary History", href: "/salary-history" },
-      ];
+        { icon: History, label: "Salary History", href: "/salary-history" }
+      );
+      return items;
     }
-    return [
+    
+    items.push(
       { icon: UserCircle, label: "My Profile", href: "/profile" },
       { icon: MapPin, label: "Clock In/Out", href: "/attendance" },
       { icon: CalendarIcon, label: "Full Calendar", href: "/calendar" },
-      { icon: Send, label: "Leave Portal", href: "/leaves" },
-    ];
+      { icon: Send, label: "Leave Portal", href: "/leaves" }
+    );
+
+    return items;
   };
 
   const menuItems = getMenuItems();
@@ -131,7 +139,6 @@ export default function Sidebar() {
             >
               <div className="flex items-center gap-4">
                 
-                {/* 🔴 Icon Wrapper with Collapsed Badge */}
                 <div className="relative flex items-center justify-center">
                   <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
                   {item.badge && isCollapsed && (
@@ -139,7 +146,6 @@ export default function Sidebar() {
                   )}
                 </div>
 
-                {/* 🔴 Label with Expanded Badge */}
                 {!isCollapsed && (
                   <div className="flex items-center gap-2 animate-in fade-in">
                     <span className="font-bold text-[13px] tracking-tight whitespace-nowrap">
@@ -170,27 +176,26 @@ export default function Sidebar() {
           {!isCollapsed && <span className="uppercase italic tracking-tighter animate-in fade-in">Sign Out</span>}
         </button>
 
-        {/* // ✅ Naya Code (Sirf itna part replace karein): */}
-              <Link 
-                href="/profile-setup"
-                className={`bg-gray-50 rounded-[28px] border border-gray-100 relative overflow-hidden transition-all duration-300 hover:border-blue-600 group ${isCollapsed ? "w-12 h-12 flex items-center justify-center" : "p-5 w-full flex items-center gap-4"}`}
-              >
-                <div className="w-12 h-12 min-w-[48px] rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-sm group-hover:scale-105 transition-transform">
-                  {userData?.name ? userData.name[0] : "U"}
-                </div>
-                {!isCollapsed && (
-                  <div className="overflow-hidden animate-in fade-in flex-1">
-                    <p className="text-sm font-black text-gray-900 truncate italic leading-tight uppercase">
-                      {userData?.name || "User"}
-                    </p>
-                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1 italic flex items-center justify-between">
-                      Profile Setup
-                      <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </p>
-                  </div>
-                )}
-              </Link>
+        <Link 
+          href="/profile-setup"
+          className={`bg-gray-50 rounded-[28px] border border-gray-100 relative overflow-hidden transition-all duration-300 hover:border-blue-600 group ${isCollapsed ? "w-12 h-12 flex items-center justify-center" : "p-5 w-full flex items-center gap-4"}`}
+        >
+          <div className="w-12 h-12 min-w-[48px] rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-sm group-hover:scale-105 transition-transform">
+            {userData?.name ? userData.name[0] : "U"}
           </div>
-        </aside>
-      );
-    }
+          {!isCollapsed && (
+            <div className="overflow-hidden animate-in fade-in flex-1">
+              <p className="text-sm font-black text-gray-900 truncate italic leading-tight uppercase">
+                {userData?.name || "User"}
+              </p>
+              <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1 italic flex items-center justify-between">
+                Profile Setup
+                <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+              </p>
+            </div>
+          )}
+        </Link>
+      </div>
+    </aside>
+  );
+}

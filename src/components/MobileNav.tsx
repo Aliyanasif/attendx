@@ -15,7 +15,8 @@ import {
   MapPin,
   Calendar as CalendarIcon,
   LogOut,
-  User // 👈 User icon added
+  User, 
+  ShieldCheck 
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { auth } from "@/lib/firebase"; 
@@ -40,26 +41,39 @@ export default function MobileNav() {
     }
   };
 
-  // 🛡️ Filtered List (Profile yahan se hata di hai)
+  // 🛡️ Filtered List with OWNER logic (Single Function)
   const getNavItems = () => {
+    const OWNER_EMAIL = "aliyanasif503@gmail.com";
+    let items: any[] = [];
+
+    // Agar Owner login hai toh sab se pehle Command Center dikhao
+    if (userData?.email === OWNER_EMAIL) {
+      items.push({ icon: ShieldCheck, label: "Command", href: "/owner-control" }); 
+    }
+
     if (role === "Admin" || role === "Super Admin" || role === "Manager") {
-      return [
+      items.push(
         { icon: LayoutDashboard, label: "Home", href: "/" },
         { icon: Clock, label: "Admin", href: "/attendance-mgmt" },
         { icon: ClipboardCheck, label: "Requests", href: "/requests-hub" },
         { icon: Send, label: "Leaves", href: "/leaves" },
         { icon: BarChart3, label: "Stats", href: "/performance" },
-        ...(role !== "Super Admin" ? [{ icon: MapPin, label: "Punch", href: "/attendance" }] : []),
+        // ...(role !== "Super Admin" ? [{ icon: MapPin, label: "Punch", href: "/attendance" }] : []),
         { icon: Users, label: "Staff", href: "/employees" },
         { icon: CreditCard, label: "Payroll", href: "/payroll" },
-        { icon: History, label: "Salary", href: "/salary-history" },
-      ];
+        { icon: History, label: "Salary", href: "/salary-history" }
+      );
+      return items;
     }
-    return [
+    
+    // Staff ke options
+    items.push(
       { icon: MapPin, label: "Punch In/Out", href: "/attendance" },
       { icon: CalendarIcon, label: "Calendar", href: "/calendar" },
-      { icon: Send, label: "Leave Portal", href: "/leaves" },
-    ];
+      { icon: Send, label: "Leave Portal", href: "/leaves" }
+    );
+    
+    return items;
   };
 
   const navItems = getNavItems();
@@ -95,11 +109,11 @@ export default function MobileNav() {
           );
         })}
 
-        {/* 2. 👤 PREMIUM USER PROFILE PILL (Signout se theek pehle) */}
+        {/* 2. 👤 PREMIUM USER PROFILE PILL */}
         <Link 
           href="/profile-setup" 
           className={`flex items-center gap-3 transition-all duration-500 ease-out shrink-0 rounded-full px-4 py-2.5 ${
-            pathname === "/profile-setup-setup" 
+            pathname === "/profile-setup" 
               ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' 
               : 'bg-gray-50 border border-gray-100 text-gray-900 hover:bg-gray-100'
           }`}
@@ -114,7 +128,7 @@ export default function MobileNav() {
               {userData?.name || "User Profile"}
             </span>
             <span className={`text-[8px] font-bold uppercase tracking-widest mt-0.5 ${
-              pathname === "/profile-setupS" ? 'text-blue-100' : 'text-blue-600'
+              pathname === "/profile-setup" ? 'text-blue-100' : 'text-blue-600'
             }`}>
               Setup Profile
             </span>

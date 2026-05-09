@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { auth, db } from "@/lib/firebase";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  sendEmailVerification, 
+  signOut 
+} from "firebase/auth";
 import { setDoc, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { notify } from "@/lib/notify";
@@ -29,6 +34,10 @@ export default function LoginPage() {
       if (isRegistering) {
         // --- Super Admin Registration ---
         const res = await createUserWithEmailAndPassword(auth, email, password);
+        
+        // 🚀 Naya Code: Account bante hi Verification Email bhej do
+        await sendEmailVerification(res.user);
+
         await setDoc(doc(db, "employees", res.user.uid), {
           uid: res.user.uid,
           name: name,
@@ -38,16 +47,39 @@ export default function LoginPage() {
           createdAt: new Date().toISOString(),
           status: "active"
         });
-        notify(`Welcome ${name}! Your Super Admin account is ready. 🚀`);
+        
+        // Registration ke baad account auto-login na ho aur user ko verify karne ka bola jaye
+        await signOut(auth);
+        notify("Account created! 🚀 We've sent you a verification email. Please check your inbox.");
+        setIsRegistering(false); // Form ko wapas Login mode par le aao
+        return; 
+
       } else {
         // --- Login ---
-        await signInWithEmailAndPassword(auth, email, password);
+        const res = await signInWithEmailAndPassword(auth, email, password);
+        
+        // 🚀 Naya Code: Check karo email verified hai ya nahi
+        if (!res.user.emailVerified) {
+          await signOut(auth); // Agar verify nahi hai, toh login rok do
+          notify("please verify your email first! 🛑 Check your Inbox or Spam folder.");
+          return;
+        }
+
         notify("Logged in successfully! 👋");
+        router.push("/");
       }
-      router.push("/");
-    } catch (err: any) {
-      notify(err.message);
-    } finally {
+    } catch (error: any) {
+      // Agar email/password ghalat ho toh custom message dikhao
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        notify("Email & Password does not match!");
+      } else if (error.code === 'auth/too-many-requests') {
+        notify("too many wrong attempts. Try it after some time! ⏳");
+      } else {
+        // Kisi aur error ke liye default message
+        notify("Login error: " + error.message);
+      }
+    }
+    finally {
       setLoading(false);
     }
   };

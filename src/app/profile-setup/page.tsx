@@ -6,7 +6,7 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import { 
   User, Mail, Phone, MapPin, Camera, Save, 
-  Loader2, Globe, Github, Linkedin, Notebook 
+  Loader2, Globe, Notebook 
 } from "lucide-react";
 import { notify } from "@/lib/notify";
 

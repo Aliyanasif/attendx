@@ -49,11 +49,8 @@ export default function ManageStaffPage() {
 
   const [formData, setFormData] = useState(initialForm);
 
-  // ⏱️ SaaS Trial Logic & Kill Switch
   const isTrialValid = () => {
-    // 🛡️ THE KILL SWITCH: Explicit downgrade pe trial cancel
     if (userData?.isPremium === false) return false;
-
     if (!userData?.createdAt) return false;
     const trialDays = 14;
     const createdDate = userData.createdAt?.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
@@ -88,7 +85,7 @@ export default function ManageStaffPage() {
     try {
       if (editingId) {
         await updateDoc(doc(db, "employees", editingId), { ...formData, updatedAt: serverTimestamp() });
-        notify("Staff updated successfully! 📝");
+        notify("employee updated successfully! 📝");
       } else {
         const { initializeApp, getApps } = await import("firebase/app");
         const { getAuth: getSecondaryAuth, createUserWithEmailAndPassword: createInSecondary } = await import("firebase/auth");
@@ -106,7 +103,7 @@ export default function ManageStaffPage() {
           createdAt: serverTimestamp() 
         });
         
-        notify("Staff Registered! Profile is live. 🚀");
+        notify("Employee Registered!");
       }
       setIsModalOpen(false);
       resetForm();
@@ -134,6 +131,16 @@ export default function ManageStaffPage() {
       try {
         const empToDelete = employees.find(e => e.id === deleteId);
         
+        // 🚀 1. CALL SECURE API TO DELETE FROM FIREBASE AUTH
+        if (empToDelete?.uid) {
+          await fetch("/api/delete-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uid: empToDelete.uid })
+          });
+        }
+        
+        // 🚀 2. DELETE FROM FIRESTORE DATABASE
         await deleteDoc(doc(db, "employees", deleteId)); 
 
         if (empToDelete) {
@@ -146,7 +153,7 @@ export default function ManageStaffPage() {
           salSnap.forEach((d) => deleteDoc(d.ref));
         }
 
-        notify("Staff & all related data permanently removed! 🗑️"); 
+        notify("Account termination complete. All related data has been erased."); 
         setIsConfirmOpen(false); 
         setDeleteId(null);
       } catch (err: any) {
@@ -301,7 +308,6 @@ export default function ManageStaffPage() {
                 Premium access ke liye neechay diye gaye account mein payment transfer karein aur WhatsApp par screenshot bhej dein.
               </p>
               
-              {/* 🏦 Bank Details Box */}
               <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 space-y-3 shadow-inner">
                 <div className="flex justify-between items-center border-b border-gray-100 pb-2">
                   <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Bank</span>
@@ -325,7 +331,6 @@ export default function ManageStaffPage() {
                 </div>
               </div>
 
-              {/* 💬 WhatsApp Action Button */}
               <div className="flex flex-col gap-3 pt-2">
                 <a 
                   href="https://wa.me/message/IUY2YDEDHTFTN1" 
