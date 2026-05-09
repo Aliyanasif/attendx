@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore"; // 👈 query, where added
 import { useAuth } from "@/context/AuthContext"; 
 import { useRouter } from "next/navigation"; 
 import { 
@@ -34,15 +34,18 @@ export default function ManagerDashboard() {
   const displayDate = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   useEffect(() => {
-    if (userData?.role === "Staff") return;
+    // Agar data nahi hai ya role Staff hai toh roko
+    if (!userData?.uid || userData?.role === "Staff") return;
 
-    // 1. Live Employees Fetching
-    const unsubEmp = onSnapshot(collection(db, "employees"), (snap) => {
+    // 🛡️ 1. Live Employees Fetching (FILTERED BY ADMIN)
+    const empQuery = query(collection(db, "employees"), where("adminUid", "==", userData.uid));
+    const unsubEmp = onSnapshot(empQuery, (snap) => {
       setEmployees(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 2. Live Today's Attendance Fetching
-    const unsubAtt = onSnapshot(collection(db, "attendance"), (snap) => {
+    // 🛡️ 2. Live Today's Attendance Fetching (FILTERED BY ADMIN)
+    const attQuery = query(collection(db, "attendance"), where("adminUid", "==", userData.uid));
+    const unsubAtt = onSnapshot(attQuery, (snap) => {
       const todayAtt = snap.docs
         .map(doc => doc.data())
         .filter(att => att.date === today);
@@ -51,7 +54,7 @@ export default function ManagerDashboard() {
     });
 
     return () => { unsubEmp(); unsubAtt(); };
-  }, [today, userData]);
+  }, [today, userData]); // 👈 Dependencies updated
 
   if (authLoading || (loading && userData?.role !== "Staff")) {
     return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;

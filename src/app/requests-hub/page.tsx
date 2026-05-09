@@ -6,6 +6,7 @@ import {
   collection, 
   onSnapshot, 
   query, 
+  where,
   updateDoc, 
   doc, 
   orderBy,
@@ -21,20 +22,19 @@ import {
   XCircle, 
   UserMinus,
   Clock,
-  Lock // 🛡️ Lock icon import kar liya
+  Lock 
 } from "lucide-react";
 import { notify } from "@/lib/notify";
 
 export default function RequestsHub() {
-  const { userData, loading: authLoading } = useAuth(); // 🛡️ authLoading bhi nikal liya
+  const { userData, user, loading: authLoading } = useAuth(); // 'user' extract kiya uid ke liye
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("leaves"); // 'leaves' or 'resignations'
-  const [view, setView] = useState("pending"); // 'pending' or 'history'
+  const [activeTab, setActiveTab] = useState("leaves"); 
+  const [view, setView] = useState("pending"); 
   
   const [leaves, setLeaves] = useState<any[]>([]);
   const [resignations, setResignations] = useState<any[]>([]);
 
-  // 🛡️ SECURITY LOCK START --------------------------------------------------
   if (authLoading) {
     return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
   }
@@ -46,28 +46,38 @@ export default function RequestsHub() {
           <Lock size={48} />
         </div>
         <h2 className="text-4xl font-black italic uppercase tracking-tighter text-gray-900">Access Denied</h2>
-        <p className="text-gray-500 font-bold mt-4 max-w-sm italic">Bhai, ye area sirf Management ke liye reserved hai. Aapka access restricted hai.</p>
+        <p className="text-gray-500 font-bold mt-4 max-w-sm italic">Ye area sirf Management ke liye reserved hai. Aapka access restricted hai.</p>
       </div>
     );
   }
-  // 🛡️ SECURITY LOCK END ----------------------------------------------------
 
   useEffect(() => {
-    // 1. Fetch Leaves[cite: 6]
-    const qLeaves = query(collection(db, "leaves"), orderBy("submittedAt", "desc"));
+    // Multi-tenant guard
+    if (!user?.uid) return;
+
+    // 1. Fetch Leaves (Filtered by Admin)
+    const qLeaves = query(
+      collection(db, "leaves"), 
+      where("adminUid", "==", user.uid),
+      orderBy("submittedAt", "desc")
+    );
     const unsubLeaves = onSnapshot(qLeaves, (snap) => {
       setLeaves(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 2. Fetch Resignations[cite: 6]
-    const qResign = query(collection(db, "resignations"), orderBy("submittedAt", "desc"));
+    // 2. Fetch Resignations (Filtered by Admin)
+    const qResign = query(
+      collection(db, "resignations"), 
+      where("adminUid", "==", user.uid),
+      orderBy("submittedAt", "desc")
+    );
     const unsubResign = onSnapshot(qResign, (snap) => {
       setResignations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     });
 
     return () => { unsubLeaves(); unsubResign(); };
-  }, []);
+  }, [user?.uid]);
 
   const handleStatus = async (id: string, newStatus: string, collectionName: string) => {
     try {
@@ -83,7 +93,6 @@ export default function RequestsHub() {
     }
   };
 
-  // Logic: Current List Filter[cite: 6]
   const currentData = activeTab === "leaves" ? leaves : resignations;
   const pendingRequests = currentData.filter(r => r.status === "Pending");
   const historyRequests = currentData.filter(r => r.status !== "Pending");
@@ -92,7 +101,6 @@ export default function RequestsHub() {
   return (
     <div className="space-y-10 animate-in fade-in duration-700 max-w-6xl mx-auto pb-20 px-4 mt-4">
       
-      {/* Header & Main Tabs[cite: 6] */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h1 className="text-5xl font-black italic uppercase text-gray-900 tracking-tighter leading-none">
@@ -117,13 +125,11 @@ export default function RequestsHub() {
         </div>
       </div>
 
-      {/* Pending vs History Switcher[cite: 6] */}
       <div className="flex gap-6 border-b border-gray-100 pb-2">
         <button onClick={() => setView("pending")} className={`text-[10px] font-black uppercase tracking-[0.2em] transition-all ${view === 'pending' ? 'text-blue-600' : 'text-gray-300'}`}>Pending</button>
         <button onClick={() => setView("history")} className={`text-[10px] font-black uppercase tracking-[0.2em] transition-all ${view === 'history' ? 'text-blue-600' : 'text-gray-300'}`}>History</button>
       </div>
 
-      {/* List Display[cite: 6] */}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>
       ) : (
@@ -175,7 +181,7 @@ export default function RequestsHub() {
           ) : (
             <div className="bg-gray-50 p-20 rounded-[50px] border border-dashed border-gray-200 text-center flex flex-col items-center gap-4">
                <ClipboardList size={40} className="text-gray-200" />
-               <p className="font-black text-gray-300 uppercase italic tracking-widest text-sm italic">No {view} {activeTab} found.</p>
+               <p className="font-black text-gray-300 uppercase italic tracking-widest text-sm">No {view} {activeTab} found.</p>
             </div>
           )}
         </div>

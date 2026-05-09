@@ -170,22 +170,27 @@ export default function Sidebar() {
           {!isCollapsed && <span className="uppercase italic tracking-tighter animate-in fade-in">Sign Out</span>}
         </button>
 
-        <div className={`bg-gray-50 rounded-[28px] border border-gray-100 relative overflow-hidden transition-all duration-300 ${isCollapsed ? "w-12 h-12 flex items-center justify-center" : "p-5 w-full flex items-center gap-4"}`}>
-          <div className="w-12 h-12 min-w-[48px] rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-sm">
-            {userData?.name ? userData.name[0] : "U"}
+        {/* // ✅ Naya Code (Sirf itna part replace karein): */}
+              <Link 
+                href="/profile-setup"
+                className={`bg-gray-50 rounded-[28px] border border-gray-100 relative overflow-hidden transition-all duration-300 hover:border-blue-600 group ${isCollapsed ? "w-12 h-12 flex items-center justify-center" : "p-5 w-full flex items-center gap-4"}`}
+              >
+                <div className="w-12 h-12 min-w-[48px] rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-xl shadow-sm group-hover:scale-105 transition-transform">
+                  {userData?.name ? userData.name[0] : "U"}
+                </div>
+                {!isCollapsed && (
+                  <div className="overflow-hidden animate-in fade-in flex-1">
+                    <p className="text-sm font-black text-gray-900 truncate italic leading-tight uppercase">
+                      {userData?.name || "User"}
+                    </p>
+                    <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mt-1 italic flex items-center justify-between">
+                      Profile Setup
+                      <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                    </p>
+                  </div>
+                )}
+              </Link>
           </div>
-          {!isCollapsed && (
-            <div className="overflow-hidden animate-in fade-in">
-              <p className="text-sm font-black text-gray-900 truncate italic leading-tight uppercase">
-                {userData?.name || "User" }
-              </p>
-              <p className="text-[9px] font-black uppercase tracking-widest text-blue-500 mt-1">
-                {role}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </aside>
-  );
-}
+        </aside>
+      );
+    }

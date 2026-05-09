@@ -13,20 +13,18 @@ export default function AttendancePage() {
   
   const [currentTime, setCurrentTime] = useState(new Date());
   const [loading, setLoading] = useState(true);
-  const [isPunching, setIsPunching] = useState(false); // Punch loading state
+  const [isPunching, setIsPunching] = useState(false); 
   const [status, setStatus] = useState<"not_clocked_in" | "clocked_in" | "completed">("not_clocked_in");
   const [clockInTime, setClockInTime] = useState<string | null>(null);
   const [clockOutTime, setClockOutTime] = useState<string | null>(null);
 
   const todayDate = dayjs().format("YYYY-MM-DD");
 
-  // 🕒 Live Clock
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  // 📥 Fetch Today's Attendance Status
   useEffect(() => {
     const fetchTodayStatus = async () => {
       if (!user) return;
@@ -55,7 +53,6 @@ export default function AttendancePage() {
     fetchTodayStatus();
   }, [user, todayDate]);
 
-  // 📍 Helper Function to Get GPS Location
   const getLocation = (): Promise<{ lat: number; lng: number }> => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -71,34 +68,32 @@ export default function AttendancePage() {
           (error) => {
             reject("Location access denied! Please enable GPS.");
           },
-          { enableHighAccuracy: true } // Premium accuracy
+          { enableHighAccuracy: true }
         );
       }
     });
   };
 
-  // 👆 Handle Clock In / Out with GPS
   const handlePunch = async () => {
-    if (!user) return;
+    if (!user || !userData) return; // 🛡️ Ensure userData exists
     setIsPunching(true);
 
     try {
-      // 1. Pehle Location Fetch Karein
       notify("Verifying your live location... 📍");
       const userLocation = await getLocation();
 
-      // 2. Firebase Document Reference
       const attRef = doc(db, "attendance", `${user.uid}_${todayDate}`);
       const now = new Date();
 
       if (status === "not_clocked_in") {
-        // Clock In Logic (Time + Location save)
+        // ✅ FIXED: Ab Boss ki ID (adminUid) record mein save hogi
         await setDoc(attRef, {
           uid: user.uid,
-          employeeName: userData?.name || "Anonymous",
+          employeeName: userData.name || "Anonymous",
+          adminUid: userData.adminUid || null, // 👈 Multi-Tenant Connection
           date: todayDate,
           clockIn: now,
-          clockInLocation: userLocation, // 📍 GPS Saved!
+          clockInLocation: userLocation,
           clockOut: null,
           status: "Present"
         });
@@ -107,10 +102,9 @@ export default function AttendancePage() {
         notify("Clocked In Successfully! 🟢");
       } 
       else if (status === "clocked_in") {
-        // Clock Out Logic (Time + Location save)
         await updateDoc(attRef, {
           clockOut: now,
-          clockOutLocation: userLocation, // 📍 GPS Saved!
+          clockOutLocation: userLocation,
         });
         setClockOutTime(dayjs(now).format("hh:mm A"));
         setStatus("completed");
@@ -118,7 +112,6 @@ export default function AttendancePage() {
       }
     } catch (error: any) {
       console.error("Punch Error:", error);
-      // Agar user ne location block ki hai toh error dikhayein
       notify(typeof error === "string" ? error : "Failed to punch in/out. Try again.");
     } finally {
       setIsPunching(false);
@@ -134,11 +127,9 @@ export default function AttendancePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in duration-700 mt-4 pb-20">
-      
-      {/* HEADER */}
+    <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in duration-700 mt-4 pb-20 text-gray-900">
       <div>
-        <h1 className="text-4xl md:text-5xl font-black italic uppercase text-gray-900 tracking-tighter leading-none">
+        <h1 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">
           Live <span className="text-blue-600">Punch</span>
         </h1>
         <p className="text-gray-400 font-bold text-[10px] md:text-xs uppercase tracking-[0.3em] ml-1 mt-2 flex items-center gap-2">
@@ -146,16 +137,11 @@ export default function AttendancePage() {
         </p>
       </div>
 
-      {/* MAIN CLOCK CARD */}
       <div className="bg-white rounded-[50px] p-8 md:p-12 shadow-2xl border border-gray-100 flex flex-col items-center justify-center text-center relative overflow-hidden">
-        
-        {/* Decorative Background Circles */}
         <div className="absolute top-0 left-0 w-64 h-64 bg-blue-50 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 opacity-60"></div>
         <div className="absolute bottom-0 right-0 w-64 h-64 bg-green-50 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 opacity-60"></div>
 
         <div className="relative z-10 space-y-8 w-full max-w-sm">
-          
-          {/* DIGITAL CLOCK */}
           <div className="space-y-2">
             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">
               {dayjs(currentTime).format("dddd, MMMM D, YYYY")}
@@ -166,14 +152,13 @@ export default function AttendancePage() {
             </h2>
           </div>
 
-          {/* ACTION BUTTON */}
           {status === "completed" ? (
             <div className="bg-gray-50 border border-gray-100 rounded-[35px] p-8 flex flex-col items-center gap-3">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-2">
                 <CheckCircle2 size={32} />
               </div>
-              <p className="font-black text-gray-900 uppercase italic tracking-wide text-lg">Shift Completed</p>
-              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Location & Time Verified</p>
+              <p className="font-black text-gray-900 uppercase italic tracking-wide text-lg leading-none">Shift Completed</p>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Logged for {userData?.name}</p>
             </div>
           ) : (
             <button
@@ -190,17 +175,16 @@ export default function AttendancePage() {
               ) : (
                 <Fingerprint size={48} className="text-white/90 group-hover:scale-110 transition-transform duration-300" />
               )}
-              <span className="text-white font-black uppercase tracking-[0.2em] text-xl italic">
+              <span className="text-white font-black uppercase tracking-[0.2em] text-xl italic leading-none">
                 {isPunching ? "Verifying..." : status === "not_clocked_in" ? "Clock In Now" : "Clock Out"}
               </span>
             </button>
           )}
 
-          {/* TIMINGS SUMMARY */}
           <div className="grid grid-cols-2 gap-4 mt-8 pt-8 border-t border-gray-100">
             <div className="bg-gray-50 p-4 rounded-3xl text-center">
               <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
-                <MapPin size={10} /> In Time
+                <Clock size={10} /> In Time
               </p>
               <p className={`font-black italic ${clockInTime ? 'text-gray-900' : 'text-gray-300'}`}>
                 {clockInTime || "--:--"}
@@ -208,14 +192,13 @@ export default function AttendancePage() {
             </div>
             <div className="bg-gray-50 p-4 rounded-3xl text-center">
               <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
-                <MapPin size={10} /> Out Time
+                <Clock size={10} /> Out Time
               </p>
               <p className={`font-black italic ${clockOutTime ? 'text-gray-900' : 'text-gray-300'}`}>
                 {clockOutTime || "--:--"}
               </p>
             </div>
           </div>
-
         </div>
       </div>
     </div>

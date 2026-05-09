@@ -6,7 +6,7 @@ import { db } from "@/lib/firebase";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { 
   User, Mail, Briefcase, Clock, 
-  Calendar, Shield, Banknote, LogOut, Loader2, AlertTriangle, X
+  Calendar, Shield, Banknote, LogOut, Loader2, AlertTriangle, X, Building2 // 👈 Building2 icon add kiya hai
 } from "lucide-react";
 import { notify } from "@/lib/notify";
 
@@ -82,9 +82,16 @@ export default function ProfilePage() {
                 {userData?.role || "Staff"}
               </span>
             </div>
+            
             <p className="text-gray-400 font-bold flex items-center justify-center md:justify-start gap-2">
               <Mail size={16} /> {userData?.email}
             </p>
+            
+            {/* ✨ NAYA CODE: Yahan Office Name Add Kiya Hai ✨ */}
+            <p className="text-gray-400 font-bold flex items-center justify-center md:justify-start gap-2">
+              <Building2 size={16} /> {userData?.officeName || "Organization Name"}
+            </p>
+            
           </div>
         </div>
       </div>
