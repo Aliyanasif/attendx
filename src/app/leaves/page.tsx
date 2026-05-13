@@ -88,7 +88,7 @@ export default function MyLeavesPage() {
     return () => unsubL();
   }, [user]);
 
-  // 2. Submit Logic
+  // 2. Submit Logic (FIXED: Added Multi-Tenant Link)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -98,12 +98,19 @@ export default function MyLeavesPage() {
       return;
     }
 
+    // Safety check for multi-tenant mapping
+    if (!userData?.adminUid) {
+      notify("Error: Account mapping missing. Contact Architect.");
+      return;
+    }
+
     const collectionName = formType === "leave" ? "leaves" : "resignations";
 
     try {
       await addDoc(collection(db, collectionName), {
         uid: user.uid,
         employeeName: userData?.name || "Anonymous",
+        adminUid: userData.adminUid, // 🔥 MULTI-TENANT LINK ADDED HERE 🔥
         ...(formType === 'leave' && { 
           type: formData.type, 
           startDate: formData.start, 
@@ -155,7 +162,7 @@ export default function MyLeavesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         
-        {/* LEFT: FORM SECTION - FIX: Hata diya 'sticky top-8', ab 'relative' hai */}
+        {/* LEFT: FORM SECTION */}
         <div className="bg-white p-10 rounded-[50px] border border-gray-100 shadow-2xl h-fit relative">
           <div className="flex items-center justify-between mb-8">
             <h3 className={`text-xs font-black uppercase tracking-[0.2em] ${formType === 'leave' ? 'text-blue-600' : 'text-red-600'}`}>
@@ -167,7 +174,7 @@ export default function MyLeavesPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             {formType === 'leave' && (
               <>
-                {/* Leave Type Dropdown with CUSTOM option */}
+                {/* Leave Type Dropdown */}
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-gray-400 ml-4 tracking-widest italic">Category</label>
                   <select 
