@@ -46,23 +46,38 @@ export default function SalaryHistory() {
   }, [user?.uid, userData, authLoading]);
 
   const fetchHistory = async (emp: any) => {
+    // 🛡️ Null Safety Fix
+    if (!user?.uid) {
+      console.error("User not authenticated");
+      return;
+    }
+  
     setLoading(true);
     setSelectedEmp(emp);
     setIsDropdownOpen(false);
+  
     try {
       // ✅ Multi-Tenant Logic: Admin apni hi disbursed history dekh sakay
       const q = query(
         collection(db, "salary_history"),
         where("employeeName", "==", emp.name),
-        where("adminUid", "==", user.uid), // 🛡️ Security filter added
+        where("adminUid", "==", user.uid),
         orderBy("disbursedAt", "desc")
       );
+  
       const snap = await getDocs(q);
-      setHistory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    } catch (err) { 
-      console.error("History fetch error:", err); 
+  
+      setHistory(
+        snap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+      );
+    } catch (err) {
+      console.error("History fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (authLoading) {
