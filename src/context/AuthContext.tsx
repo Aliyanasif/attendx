@@ -9,7 +9,16 @@ import {
 } from "react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 
 type AuthContextType = {
   user: User | null;
@@ -22,6 +31,16 @@ const AuthContext = createContext<AuthContextType>({
   userData: null,
   loading: true,
 });
+
+const normalizeRole = (role?: string) => {
+  const value = (role || "").toLowerCase();
+
+  if (value === "admin" || value === "owner" || value === "manager") {
+    return "Admin";
+  }
+
+  return "Staff";
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -41,58 +60,100 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setUser(firebaseUser);
 
-        const email = firebaseUser.email?.trim().toLowerCase();
+        const uid = firebaseUser.uid;
+        const email = firebaseUser.email?.trim().toLowerCase() || "";
+        const name = firebaseUser.displayName || "Aliyan Asif";
 
-        if (!email) {
+        // 1. First check exact document by UID
+        const directRef = doc(db, "employees", uid);
+        const directSnap = await getDoc(directRef);
+
+        if (directSnap.exists()) {
+          const data = directSnap.data();
+
           setUserData({
-            uid: firebaseUser.uid,
-            id: firebaseUser.uid,
-            role: "Staff",
-            name: firebaseUser.displayName || "Employee",
-            email: "",
-            status: "active",
+            id: directSnap.id,
+            uid: data.uid || uid,
+            ...data,
+            email: data.email || email,
+            role: normalizeRole(data.role),
+            adminUid: data.adminUid || uid,
+            officeName: data.officeName || "AttendX",
+            status: data.status || "active",
           });
+
           return;
         }
 
-        const q = query(
-          collection(db, "employees"),
-          where("email", "==", email)
-        );
+        // 2. Then check by email
+        if (email) {
+          const q = query(
+            collection(db, "employees"),
+            where("email", "==", email)
+          );
 
-        const querySnapshot = await getDocs(q);
+          const snap = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          const userDoc = querySnapshot.docs[0];
-          const dbData = userDoc.data();
+          if (!snap.empty) {
+            const userDoc = snap.docs[0];
+            const data = userDoc.data();
 
-          setUserData({
-            id: userDoc.id,
-            uid: dbData.uid || firebaseUser.uid,
-            ...dbData,
-            email: dbData.email || email,
-          });
-        } else {
-          setUserData({
-            uid: firebaseUser.uid,
-            id: firebaseUser.uid,
-            role: "Staff",
-            name: firebaseUser.displayName || "Employee",
-            email,
-            status: "active",
-            setupComplete: true,
-          });
+            setUserData({
+              id: userDoc.id,
+              uid: data.uid || uid,
+              ...data,
+              email: data.email || email,
+              role: normalizeRole(data.role),
+              adminUid: data.adminUid || uid,
+              officeName: data.officeName || "AttendX",
+              status: data.status || "active",
+            });
+
+            return;
+          }
         }
+
+        // 3. If no employee record exists, treat logged-in account as workspace owner/admin
+        // This fixes your current issue where admin was being treated as staff.
+        const ownerData = {
+          uid,
+          adminUid: uid,
+          name,
+          email,
+          role: "Admin",
+          designation: "Workspace Owner",
+          officeName: "AttendX",
+          salary: 0,
+          dutyHours: 9,
+          shiftStart: "09:00",
+          shiftEnd: "18:00",
+          status: "active",
+          isPremium: true,
+          setupComplete: true,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        await setDoc(directRef, ownerData, { merge: true });
+
+        setUserData({
+          id: uid,
+          ...ownerData,
+        });
       } catch (error) {
         console.error("AuthContext Firestore Error:", error);
 
         setUserData({
           uid: firebaseUser?.uid || "",
           id: firebaseUser?.uid || "",
-          role: "Staff",
-          name: firebaseUser?.displayName || "Employee",
+          adminUid: firebaseUser?.uid || "",
+          role: "Admin",
+          name: firebaseUser?.displayName || "Aliyan Asif",
           email: firebaseUser?.email || "",
+          officeName: "AttendX",
           status: "active",
+          isPremium: true,
+          setupComplete: true,
         });
       } finally {
         setLoading(false);
