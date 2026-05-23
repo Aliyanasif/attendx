@@ -21,6 +21,7 @@ import {
   Clock,
   Sparkles,
   AlertTriangle,
+  TrendingUp,
 } from "lucide-react";
 
 export default function ManagerDashboard() {
@@ -33,7 +34,7 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedStaff, setSelectedStaff] = useState<any>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [payrollModalType, setPayrollModalType] = useState<"overtime" | "late" | null>(null);
+  const [payrollModalType, setPayrollModalType] = useState<"overtime" | "late" | "net" | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -154,87 +155,22 @@ export default function ManagerDashboard() {
     [employees]
   );
 
-  const monthlyPayrollStats = useMemo(() => {
-    let totalOvertimeMinutes = 0;
-    let totalOvertimePay = 0;
-    let totalLateMinutes = 0;
-    let totalLateDeduction = 0;
-
-    const now = new Date();
-
-    employees.forEach((emp) => {
-      const baseSalary = Number(emp.salary || emp.baseSalary || 0);
-      const dutyHours = Number(emp.dutyHours || 9);
-      const perMinuteRate = baseSalary / 30 / dutyHours / 60;
-
-      allAttendance.forEach((record) => {
-        const matched =
-          record.employeeId === emp.id ||
-          record.employeeUid === emp.uid ||
-          record.uid === emp.uid ||
-          record.email === emp.email ||
-          record.employeeName === emp.name;
-
-        if (!matched || !record.date) return;
-
-        const recordDate = new Date(record.date);
-
-        if (
-          recordDate.getMonth() !== now.getMonth() ||
-          recordDate.getFullYear() !== now.getFullYear()
-        ) {
-          return;
-        }
-
-        const inTime = toDateSafe(record.clockIn);
-        const outTime = toDateSafe(record.clockOut);
-
-        if (!inTime || !outTime) return;
-
-        const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
-        const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
-
-        if (outTime < inTime) {
-          shiftEnd.setDate(shiftEnd.getDate() + 1);
-        }
-
-        if (inTime > shiftStart) {
-          const lateMins =
-            (inTime.getTime() - shiftStart.getTime()) / (1000 * 60);
-          totalLateMinutes += lateMins;
-          totalLateDeduction += lateMins * perMinuteRate;
-        }
-
-        if (outTime > shiftEnd) {
-          const overtimeMins =
-            (outTime.getTime() - shiftEnd.getTime()) / (1000 * 60);
-          totalOvertimeMinutes += overtimeMins;
-          totalOvertimePay += overtimeMins * perMinuteRate;
-        }
-      });
-    });
-
-    return {
-      totalOvertimeMinutes: Math.round(totalOvertimeMinutes),
-      totalOvertimePay: Math.round(totalOvertimePay),
-      totalLateMinutes: Math.round(totalLateMinutes),
-      totalLateDeduction: Math.round(totalLateDeduction),
-    };
-  }, [employees, allAttendance]);
-
   const employeePayrollBreakdown = useMemo(() => {
     const now = new Date();
-  
+
     return employees.map((emp) => {
       const baseSalary = Number(emp.salary || emp.baseSalary || 0);
       const dutyHours = Number(emp.dutyHours || 9);
+      const dailyRate = baseSalary / 30;
       const perMinuteRate = baseSalary / 30 / dutyHours / 60;
-  
+
+      let presentDays = 0;
+      let trackedMinutes = 0;
       let overtimeMinutes = 0;
       let overtimePay = 0;
       let lateMinutes = 0;
       let lateDeduction = 0;
-  
+
       allAttendance.forEach((record) => {
         const matched =
           record.employeeId === emp.id ||
@@ -242,55 +178,115 @@ export default function ManagerDashboard() {
           record.uid === emp.uid ||
           record.email === emp.email ||
           record.employeeName === emp.name;
-  
+
         if (!matched || !record.date) return;
-  
+
         const recordDate = new Date(record.date);
-  
+
         if (
           recordDate.getMonth() !== now.getMonth() ||
           recordDate.getFullYear() !== now.getFullYear()
         ) {
           return;
         }
-  
+
         const inTime = toDateSafe(record.clockIn);
         const outTime = toDateSafe(record.clockOut);
-  
+
         if (!inTime || !outTime) return;
-  
-        const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
-        const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
-  
-        if (outTime < inTime) {
-          shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+        presentDays++;
+
+        const workedMins =
+          typeof record.workedMinutes === "number"
+            ? record.workedMinutes
+            : Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000);
+
+        trackedMinutes += workedMins;
+
+        let currentLateMins = 0;
+        let currentOvertimeMins = 0;
+
+        if (typeof record.lateMinutes === "number") {
+          currentLateMins = record.lateMinutes;
+        } else {
+          const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
+          currentLateMins =
+            inTime > shiftStart
+              ? Math.max(0, (inTime.getTime() - shiftStart.getTime()) / 60000)
+              : 0;
         }
-  
-        if (inTime > shiftStart) {
-          const mins = (inTime.getTime() - shiftStart.getTime()) / 60000;
-          lateMinutes += mins;
-          lateDeduction += mins * perMinuteRate;
+
+        if (typeof record.overtimeMinutes === "number") {
+          currentOvertimeMins = record.overtimeMinutes;
+        } else {
+          const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
+
+          if (outTime < inTime) {
+            shiftEnd.setDate(shiftEnd.getDate() + 1);
+          }
+
+          currentOvertimeMins =
+            outTime > shiftEnd
+              ? Math.max(0, (outTime.getTime() - shiftEnd.getTime()) / 60000)
+              : 0;
         }
-  
-        if (outTime > shiftEnd) {
-          const mins = (outTime.getTime() - shiftEnd.getTime()) / 60000;
-          overtimeMinutes += mins;
-          overtimePay += mins * perMinuteRate;
-        }
+
+        lateMinutes += currentLateMins;
+        overtimeMinutes += currentOvertimeMins;
+
+        lateDeduction += currentLateMins * perMinuteRate;
+        overtimePay += currentOvertimeMins * perMinuteRate;
       });
-  
+
+      const earnedSalary = Math.round(dailyRate * presentDays);
+      const roundedOvertimePay = Math.round(overtimePay);
+      const roundedLateDeduction = Math.round(lateDeduction);
+      const netPayable = Math.max(
+        0,
+        Math.round(earnedSalary + roundedOvertimePay - roundedLateDeduction)
+      );
+
       return {
         id: emp.id,
         name: emp.name || "Unnamed Staff",
         designation: emp.designation || "Staff",
+        monthlySalary: Math.round(baseSalary),
+        dailyRate: Math.round(dailyRate),
         hourlyRate: Math.round(perMinuteRate * 60),
+        presentDays,
+        trackedMinutes: Math.round(trackedMinutes),
+        earnedSalary,
         overtimeMinutes: Math.round(overtimeMinutes),
-        overtimePay: Math.round(overtimePay),
+        overtimePay: roundedOvertimePay,
         lateMinutes: Math.round(lateMinutes),
-        lateDeduction: Math.round(lateDeduction),
+        lateDeduction: roundedLateDeduction,
+        netPayable,
       };
     });
   }, [employees, allAttendance]);
+
+  const monthlyPayrollStats = useMemo(() => {
+    return employeePayrollBreakdown.reduce(
+      (acc, item) => {
+        acc.totalEarnedSalary += item.earnedSalary;
+        acc.totalOvertimeMinutes += item.overtimeMinutes;
+        acc.totalOvertimePay += item.overtimePay;
+        acc.totalLateMinutes += item.lateMinutes;
+        acc.totalLateDeduction += item.lateDeduction;
+        acc.totalNetPayable += item.netPayable;
+        return acc;
+      },
+      {
+        totalEarnedSalary: 0,
+        totalOvertimeMinutes: 0,
+        totalOvertimePay: 0,
+        totalLateMinutes: 0,
+        totalLateDeduction: 0,
+        totalNetPayable: 0,
+      }
+    );
+  }, [employeePayrollBreakdown]);
 
   const attendanceRate =
     employees.length > 0
@@ -341,20 +337,11 @@ export default function ManagerDashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-5">
         <StatCard
-          dark
           icon={<Users size={24} />}
           label="Total Workforce"
           value={employees.length}
           sub="Registered staff"
           className="bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-blue-900/20"
-        />
-
-        <StatCard
-          icon={<Banknote size={24} />}
-          label="Est. Liability"
-          value={`Rs ${totalSalaries.toLocaleString()}`}
-          sub="Monthly base payroll"
-          className="bg-gray-900 text-white"
         />
 
         <StatCard
@@ -367,21 +354,18 @@ export default function ManagerDashboard() {
         />
 
         <StatCard
-          icon={<UserX size={24} />}
-          label="Missing / Absent"
-          value={absentStaff.length}
-          sub="Not reported today"
-          className="bg-white text-gray-900 border border-gray-100"
-          iconClass="bg-red-50 text-red-600"
+          icon={<Banknote size={24} />}
+          label="Monthly Earned"
+          value={`Rs ${monthlyPayrollStats.totalEarnedSalary.toLocaleString()}`}
+          sub={`Base liability: Rs ${totalSalaries.toLocaleString()}`}
+          className="bg-gray-900 text-white"
         />
 
         <StatCard
           icon={<Clock size={24} />}
           label="Monthly Overtime"
           value={`Rs ${monthlyPayrollStats.totalOvertimePay.toLocaleString()}`}
-          sub={`${(monthlyPayrollStats.totalOvertimeMinutes / 60).toFixed(
-            1
-          )} overtime hours`}
+          sub={`${(monthlyPayrollStats.totalOvertimeMinutes / 60).toFixed(1)} overtime hours`}
           className="bg-white text-gray-900 border border-gray-100"
           iconClass="bg-green-50 text-green-600"
           onClick={() => setPayrollModalType("overtime")}
@@ -396,15 +380,25 @@ export default function ManagerDashboard() {
           iconClass="bg-red-50 text-red-600"
           onClick={() => setPayrollModalType("late")}
         />
+
+        <StatCard
+          icon={<TrendingUp size={24} />}
+          label="Net Payable"
+          value={`Rs ${monthlyPayrollStats.totalNetPayable.toLocaleString()}`}
+          sub="Earned + overtime - late"
+          className="bg-white text-gray-900 border border-gray-100"
+          iconClass="bg-blue-50 text-blue-600"
+          onClick={() => setPayrollModalType("net")}
+        />
       </div>
 
       {payrollModalType && (
-  <PayrollDetailModal
-    type={payrollModalType}
-    records={employeePayrollBreakdown}
-    onClose={() => setPayrollModalType(null)}
-  />
-)}
+        <PayrollDetailModal
+          type={payrollModalType}
+          records={employeePayrollBreakdown}
+          onClose={() => setPayrollModalType(null)}
+        />
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -592,7 +586,6 @@ function StatCard({
   sub: string;
   className: string;
   iconClass?: string;
-  dark?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -765,27 +758,34 @@ function PayrollDetailModal({
   records,
   onClose,
 }: {
-  type: "overtime" | "late";
+  type: "overtime" | "late" | "net";
   records: any[];
   onClose: () => void;
 }) {
   const filtered =
     type === "overtime"
       ? records.filter((r) => r.overtimeMinutes > 0)
-      : records.filter((r) => r.lateMinutes > 0);
+      : type === "late"
+      ? records.filter((r) => r.lateMinutes > 0)
+      : records.filter((r) => r.netPayable > 0);
 
-  const title = type === "overtime" ? "Overtime Breakdown" : "Late Deduction Breakdown";
+  const title =
+    type === "overtime"
+      ? "Overtime Breakdown"
+      : type === "late"
+      ? "Late Deduction Breakdown"
+      : "Net Payable Breakdown";
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
-      <div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden">
+      <div className="bg-white w-full max-w-5xl rounded-[40px] shadow-2xl overflow-hidden">
         <div className="bg-gray-900 text-white p-8 flex justify-between items-center">
           <div>
             <h2 className="text-3xl font-black italic uppercase tracking-tighter">
               {title}
             </h2>
             <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.25em] mt-2">
-              Current month employee-wise record
+              Current month employee-wise payroll record
             </p>
           </div>
 
@@ -795,24 +795,22 @@ function PayrollDetailModal({
         </div>
 
         <div className="p-6 overflow-x-auto">
-          <table className="w-full text-left min-w-[760px]">
+          <table className="w-full text-left min-w-[900px]">
             <thead>
               <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b">
                 <th className="p-4">Employee</th>
-                <th className="p-4">Hourly Rate</th>
-                <th className="p-4 text-right">
-                  {type === "overtime" ? "Overtime Hours" : "Late Minutes"}
-                </th>
-                <th className="p-4 text-right">
-                  {type === "overtime" ? "Overtime Pay" : "Late Deduction"}
-                </th>
+                <th className="p-4">Present</th>
+                <th className="p-4 text-right">Earned</th>
+                <th className="p-4 text-right">Overtime</th>
+                <th className="p-4 text-right">Late</th>
+                <th className="p-4 text-right">Net Payable</th>
               </tr>
             </thead>
 
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-10 text-center text-gray-400 font-bold italic">
+                  <td colSpan={6} className="p-10 text-center text-gray-400 font-bold italic">
                     No records found for this month.
                   </td>
                 </tr>
@@ -829,23 +827,29 @@ function PayrollDetailModal({
                     </td>
 
                     <td className="p-4 font-black italic">
-                      Rs {item.hourlyRate.toLocaleString()}/hr
+                      {item.presentDays} days
                     </td>
 
-                    <td className="p-4 text-right font-black italic">
-                      {type === "overtime"
-                        ? `${(item.overtimeMinutes / 60).toFixed(2)} hrs`
-                        : `${item.lateMinutes} mins`}
+                    <td className="p-4 text-right font-black italic text-blue-600">
+                      Rs {item.earnedSalary.toLocaleString()}
                     </td>
 
-                    <td
-                      className={`p-4 text-right font-black italic ${
-                        type === "overtime" ? "text-green-600" : "text-red-500"
-                      }`}
-                    >
-                      {type === "overtime"
-                        ? `+ Rs ${item.overtimePay.toLocaleString()}`
-                        : `- Rs ${item.lateDeduction.toLocaleString()}`}
+                    <td className="p-4 text-right font-black italic text-green-600">
+                      + Rs {item.overtimePay.toLocaleString()}
+                      <p className="text-[10px] text-gray-400 uppercase">
+                        {(item.overtimeMinutes / 60).toFixed(2)} hrs
+                      </p>
+                    </td>
+
+                    <td className="p-4 text-right font-black italic text-red-500">
+                      - Rs {item.lateDeduction.toLocaleString()}
+                      <p className="text-[10px] text-gray-400 uppercase">
+                        {item.lateMinutes} mins
+                      </p>
+                    </td>
+
+                    <td className="p-4 text-right font-black italic text-gray-900">
+                      Rs {item.netPayable.toLocaleString()}
                     </td>
                   </tr>
                 ))
