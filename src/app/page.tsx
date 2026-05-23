@@ -29,9 +29,11 @@ export default function ManagerDashboard() {
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [allAttendance, setAllAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStaff, setSelectedStaff] = useState<any>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [payrollModalType, setPayrollModalType] = useState<"overtime" | "late" | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -89,16 +91,15 @@ export default function ManagerDashboard() {
     const unsubAtt = onSnapshot(
       attQuery,
       (snap) => {
-        const todayAtt = snap.docs
-          .map((doc) => ({ id: doc.id, ...doc.data() }))
-          .filter((att: any) => att.date === today);
-
-        setAttendance(todayAtt);
+        const records = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setAllAttendance(records);
+        setAttendance(records.filter((att: any) => att.date === today));
         setLoading(false);
       },
       (error) => {
         console.error("Attendance Snapshot Error:", error);
         setAttendance([]);
+        setAllAttendance([]);
         setLoading(false);
       }
     );
@@ -108,6 +109,19 @@ export default function ManagerDashboard() {
       unsubAtt();
     };
   }, [authLoading, today, userData?.uid, userData?.role]);
+
+  const toDateSafe = (value: any) => {
+    if (!value) return null;
+    if (value?.toDate) return value.toDate();
+    return new Date(value);
+  };
+
+  const buildShiftDate = (dateString: string, timeString: string) => {
+    const [hours, minutes] = (timeString || "09:00").split(":").map(Number);
+    const date = new Date(dateString);
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    return date;
+  };
 
   const isEmployeePresent = (emp: any) => {
     return attendance.some((att: any) => {
@@ -139,6 +153,144 @@ export default function ManagerDashboard() {
       }, 0),
     [employees]
   );
+
+  const monthlyPayrollStats = useMemo(() => {
+    let totalOvertimeMinutes = 0;
+    let totalOvertimePay = 0;
+    let totalLateMinutes = 0;
+    let totalLateDeduction = 0;
+
+    const now = new Date();
+
+    employees.forEach((emp) => {
+      const baseSalary = Number(emp.salary || emp.baseSalary || 0);
+      const dutyHours = Number(emp.dutyHours || 9);
+      const perMinuteRate = baseSalary / 30 / dutyHours / 60;
+
+      allAttendance.forEach((record) => {
+        const matched =
+          record.employeeId === emp.id ||
+          record.employeeUid === emp.uid ||
+          record.uid === emp.uid ||
+          record.email === emp.email ||
+          record.employeeName === emp.name;
+
+        if (!matched || !record.date) return;
+
+        const recordDate = new Date(record.date);
+
+        if (
+          recordDate.getMonth() !== now.getMonth() ||
+          recordDate.getFullYear() !== now.getFullYear()
+        ) {
+          return;
+        }
+
+        const inTime = toDateSafe(record.clockIn);
+        const outTime = toDateSafe(record.clockOut);
+
+        if (!inTime || !outTime) return;
+
+        const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
+        const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
+
+        if (outTime < inTime) {
+          shiftEnd.setDate(shiftEnd.getDate() + 1);
+        }
+
+        if (inTime > shiftStart) {
+          const lateMins =
+            (inTime.getTime() - shiftStart.getTime()) / (1000 * 60);
+          totalLateMinutes += lateMins;
+          totalLateDeduction += lateMins * perMinuteRate;
+        }
+
+        if (outTime > shiftEnd) {
+          const overtimeMins =
+            (outTime.getTime() - shiftEnd.getTime()) / (1000 * 60);
+          totalOvertimeMinutes += overtimeMins;
+          totalOvertimePay += overtimeMins * perMinuteRate;
+        }
+      });
+    });
+
+    return {
+      totalOvertimeMinutes: Math.round(totalOvertimeMinutes),
+      totalOvertimePay: Math.round(totalOvertimePay),
+      totalLateMinutes: Math.round(totalLateMinutes),
+      totalLateDeduction: Math.round(totalLateDeduction),
+    };
+  }, [employees, allAttendance]);
+
+  const employeePayrollBreakdown = useMemo(() => {
+    const now = new Date();
+  
+    return employees.map((emp) => {
+      const baseSalary = Number(emp.salary || emp.baseSalary || 0);
+      const dutyHours = Number(emp.dutyHours || 9);
+      const perMinuteRate = baseSalary / 30 / dutyHours / 60;
+  
+      let overtimeMinutes = 0;
+      let overtimePay = 0;
+      let lateMinutes = 0;
+      let lateDeduction = 0;
+  
+      allAttendance.forEach((record) => {
+        const matched =
+          record.employeeId === emp.id ||
+          record.employeeUid === emp.uid ||
+          record.uid === emp.uid ||
+          record.email === emp.email ||
+          record.employeeName === emp.name;
+  
+        if (!matched || !record.date) return;
+  
+        const recordDate = new Date(record.date);
+  
+        if (
+          recordDate.getMonth() !== now.getMonth() ||
+          recordDate.getFullYear() !== now.getFullYear()
+        ) {
+          return;
+        }
+  
+        const inTime = toDateSafe(record.clockIn);
+        const outTime = toDateSafe(record.clockOut);
+  
+        if (!inTime || !outTime) return;
+  
+        const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
+        const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
+  
+        if (outTime < inTime) {
+          shiftEnd.setDate(shiftEnd.getDate() + 1);
+        }
+  
+        if (inTime > shiftStart) {
+          const mins = (inTime.getTime() - shiftStart.getTime()) / 60000;
+          lateMinutes += mins;
+          lateDeduction += mins * perMinuteRate;
+        }
+  
+        if (outTime > shiftEnd) {
+          const mins = (outTime.getTime() - shiftEnd.getTime()) / 60000;
+          overtimeMinutes += mins;
+          overtimePay += mins * perMinuteRate;
+        }
+      });
+  
+      return {
+        id: emp.id,
+        name: emp.name || "Unnamed Staff",
+        designation: emp.designation || "Staff",
+        hourlyRate: Math.round(perMinuteRate * 60),
+        overtimeMinutes: Math.round(overtimeMinutes),
+        overtimePay: Math.round(overtimePay),
+        lateMinutes: Math.round(lateMinutes),
+        lateDeduction: Math.round(lateDeduction),
+      };
+    });
+  }, [employees, allAttendance]);
 
   const attendanceRate =
     employees.length > 0
@@ -187,7 +339,7 @@ export default function ManagerDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-5">
         <StatCard
           dark
           icon={<Users size={24} />}
@@ -222,7 +374,37 @@ export default function ManagerDashboard() {
           className="bg-white text-gray-900 border border-gray-100"
           iconClass="bg-red-50 text-red-600"
         />
+
+        <StatCard
+          icon={<Clock size={24} />}
+          label="Monthly Overtime"
+          value={`Rs ${monthlyPayrollStats.totalOvertimePay.toLocaleString()}`}
+          sub={`${(monthlyPayrollStats.totalOvertimeMinutes / 60).toFixed(
+            1
+          )} overtime hours`}
+          className="bg-white text-gray-900 border border-gray-100"
+          iconClass="bg-green-50 text-green-600"
+          onClick={() => setPayrollModalType("overtime")}
+        />
+
+        <StatCard
+          icon={<AlertTriangle size={24} />}
+          label="Late Deduction"
+          value={`Rs ${monthlyPayrollStats.totalLateDeduction.toLocaleString()}`}
+          sub={`${monthlyPayrollStats.totalLateMinutes} late minutes`}
+          className="bg-white text-gray-900 border border-gray-100"
+          iconClass="bg-red-50 text-red-600"
+          onClick={() => setPayrollModalType("late")}
+        />
       </div>
+
+      {payrollModalType && (
+  <PayrollDetailModal
+    type={payrollModalType}
+    records={employeePayrollBreakdown}
+    onClose={() => setPayrollModalType(null)}
+  />
+)}
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -402,6 +584,7 @@ function StatCard({
   sub,
   className,
   iconClass,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -410,10 +593,15 @@ function StatCard({
   className: string;
   iconClass?: string;
   dark?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div
-      className={`${className} p-7 rounded-[36px] shadow-sm flex flex-col justify-between min-h-[190px] hover:scale-[1.01] transition-transform`}
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${className} p-7 rounded-[36px] shadow-sm flex flex-col justify-between min-h-[190px] hover:scale-[1.01] transition-transform text-left ${
+        onClick ? "cursor-pointer hover:shadow-xl" : "cursor-default"
+      }`}
     >
       <div className="flex items-center justify-between mb-6">
         <div
@@ -437,7 +625,7 @@ function StatCard({
 
         <p className="text-xs font-bold italic opacity-50 mt-2">{sub}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -568,6 +756,104 @@ function InfoRow({
       <span className="font-bold text-gray-900 text-xs truncate max-w-[170px]">
         {value}
       </span>
+    </div>
+  );
+}
+
+function PayrollDetailModal({
+  type,
+  records,
+  onClose,
+}: {
+  type: "overtime" | "late";
+  records: any[];
+  onClose: () => void;
+}) {
+  const filtered =
+    type === "overtime"
+      ? records.filter((r) => r.overtimeMinutes > 0)
+      : records.filter((r) => r.lateMinutes > 0);
+
+  const title = type === "overtime" ? "Overtime Breakdown" : "Late Deduction Breakdown";
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-md">
+      <div className="bg-white w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden">
+        <div className="bg-gray-900 text-white p-8 flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-black italic uppercase tracking-tighter">
+              {title}
+            </h2>
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.25em] mt-2">
+              Current month employee-wise record
+            </p>
+          </div>
+
+          <button onClick={onClose} className="p-3 rounded-full hover:bg-white/10">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-x-auto">
+          <table className="w-full text-left min-w-[760px]">
+            <thead>
+              <tr className="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b">
+                <th className="p-4">Employee</th>
+                <th className="p-4">Hourly Rate</th>
+                <th className="p-4 text-right">
+                  {type === "overtime" ? "Overtime Hours" : "Late Minutes"}
+                </th>
+                <th className="p-4 text-right">
+                  {type === "overtime" ? "Overtime Pay" : "Late Deduction"}
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-10 text-center text-gray-400 font-bold italic">
+                    No records found for this month.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((item) => (
+                  <tr key={item.id} className="border-b border-gray-50">
+                    <td className="p-4">
+                      <p className="font-black uppercase italic text-gray-900">
+                        {item.name}
+                      </p>
+                      <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
+                        {item.designation}
+                      </p>
+                    </td>
+
+                    <td className="p-4 font-black italic">
+                      Rs {item.hourlyRate.toLocaleString()}/hr
+                    </td>
+
+                    <td className="p-4 text-right font-black italic">
+                      {type === "overtime"
+                        ? `${(item.overtimeMinutes / 60).toFixed(2)} hrs`
+                        : `${item.lateMinutes} mins`}
+                    </td>
+
+                    <td
+                      className={`p-4 text-right font-black italic ${
+                        type === "overtime" ? "text-green-600" : "text-red-500"
+                      }`}
+                    >
+                      {type === "overtime"
+                        ? `+ Rs ${item.overtimePay.toLocaleString()}`
+                        : `- Rs ${item.lateDeduction.toLocaleString()}`}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
