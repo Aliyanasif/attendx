@@ -20,8 +20,8 @@ export default function ProfileSetup() {
     
     setLoading(true);
     try {
-      const userDocRef = doc(db, "employees", user.uid);
-      await updateDoc(doc(db, "employees", user.uid), {
+      const userDocRef = doc(db, "employees", userData?.id || user.uid);
+await updateDoc(userDocRef, {
         officeName: officeName,
         setupComplete: true // 👈 Ye add karein
       });

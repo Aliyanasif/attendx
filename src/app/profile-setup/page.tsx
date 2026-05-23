@@ -45,7 +45,7 @@ export default function ProfilePage() {
     
     setLoading(true);
     try {
-      await updateDoc(doc(db, "employees", user.uid), {
+      await updateDoc(doc(db, "employees", userData?.id || user.uid), {
         ...formData,
         updatedAt: new Date().toISOString()
       });
