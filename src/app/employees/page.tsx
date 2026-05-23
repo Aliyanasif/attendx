@@ -260,6 +260,7 @@ export default function ManageStaffPage() {
         const {
           getAuth: getSecondaryAuth,
           createUserWithEmailAndPassword: createInSecondary,
+          sendEmailVerification,
           signOut: secondarySignOut,
         } = await import("firebase/auth");
 
@@ -282,6 +283,7 @@ export default function ManageStaffPage() {
         );
 
         const newUserId = userCredential.user.uid;
+        await sendEmailVerification(userCredential.user);
 
         await setDoc(doc(db, "employees", newUserId), {
           ...safeEmployeeData,
@@ -293,7 +295,7 @@ export default function ManageStaffPage() {
 
         await secondarySignOut(secondaryAuth);
 
-        notify("Employee registered successfully!");
+        notify("Employee registered successfully! Verification email sent.");
       }
 
       setIsModalOpen(false);
