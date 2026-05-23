@@ -110,6 +110,45 @@ export default function AttendancePage() {
     });
   };
 
+  const buildShiftDate = (dateString: string, timeString: string) => {
+    const [hours, minutes] = (timeString || "09:00").split(":").map(Number);
+    const date = new Date(dateString);
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    return date;
+  };
+
+  const calculateShiftStats = (clockIn: Date, clockOut: Date) => {
+    const shiftStart = buildShiftDate(todayDate, userData?.shiftStart || "09:00");
+    const shiftEnd = buildShiftDate(todayDate, userData?.shiftEnd || "18:00");
+
+    if (clockOut < clockIn) {
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    }
+
+    const workedMinutes = Math.max(
+      0,
+      Math.round((clockOut.getTime() - clockIn.getTime()) / 60000)
+    );
+
+    const lateMinutes =
+      clockIn > shiftStart
+        ? Math.round((clockIn.getTime() - shiftStart.getTime()) / 60000)
+        : 0;
+
+    const overtimeMinutes =
+      clockOut > shiftEnd
+        ? Math.round((clockOut.getTime() - shiftEnd.getTime()) / 60000)
+        : 0;
+
+    return {
+      workedMinutes,
+      lateMinutes,
+      overtimeMinutes,
+      shiftStart: userData?.shiftStart || "09:00",
+      shiftEnd: userData?.shiftEnd || "18:00",
+    };
+  };
+
   const handlePunch = async () => {
     if (isPunching) return;
 
@@ -156,6 +195,7 @@ export default function AttendancePage() {
           {
             uid: user.uid,
             employeeUid: user.uid,
+            employeeId: userData?.id || user.uid,
             employeeName: userData.name || user.displayName || "Anonymous",
             employeeEmail: userData.email || user.email || "",
             adminUid: userData.adminUid,
@@ -166,6 +206,11 @@ export default function AttendancePage() {
             clockInLocation: userLocation,
             clockOut: null,
             clockOutLocation: null,
+            workedMinutes: 0,
+            overtimeMinutes: 0,
+            lateMinutes: 0,
+            shiftStart: userData?.shiftStart || "09:00",
+            shiftEnd: userData?.shiftEnd || "18:00",
             status: "Present",
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -198,10 +243,21 @@ export default function AttendancePage() {
           return;
         }
 
+        const clockInDate = attSnap.data()?.clockIn?.toDate
+          ? attSnap.data().clockIn.toDate()
+          : new Date(attSnap.data()?.clockIn);
+
+        const stats = calculateShiftStats(clockInDate, now);
+
         await updateDoc(attRef, {
           clockOut: now,
           clockOutServerTime: serverTimestamp(),
           clockOutLocation: userLocation,
+          workedMinutes: stats.workedMinutes,
+          overtimeMinutes: stats.overtimeMinutes,
+          lateMinutes: stats.lateMinutes,
+          shiftStart: stats.shiftStart,
+          shiftEnd: stats.shiftEnd,
           status: "Completed",
           updatedAt: serverTimestamp(),
         });
