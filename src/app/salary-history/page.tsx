@@ -119,17 +119,15 @@ export default function SalaryHistory() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20 px-4 text-gray-900">
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-        <div>
-          <h1 className="text-5xl font-black tracking-tighter italic uppercase leading-none">
-            Salary <span className="text-blue-600">Archives</span>
-          </h1>
+      <div>
+        <h1 className="text-5xl font-black tracking-tighter italic uppercase leading-none">
+          Salary <span className="text-blue-600">Archives</span>
+        </h1>
 
-          <p className="text-gray-500 font-medium italic mt-2 underline decoration-blue-100">
-            Audit disbursed salary records, overtime payments and late
-            deductions.
-          </p>
-        </div>
+        <p className="text-gray-500 font-medium italic mt-2 underline decoration-blue-100">
+          Audit disbursed salary records, earned pay, overtime and late
+          deductions.
+        </p>
       </div>
 
       <div className="relative max-w-md" ref={dropdownRef}>
@@ -196,18 +194,15 @@ export default function SalaryHistory() {
         <div className="grid grid-cols-1 gap-6">
           {history.length > 0 ? (
             history.map((record) => {
-              const basePay = Number(record.baseSalary || 0);
+              const monthlySalary = Number(record.baseSalary || 0);
+              const earnedSalary = Number(record.earnedSalary || record.baseSalary || 0);
               const netPay = Number(record.netSalary || 0);
 
               const overtimePay = Number(record.overtimePay || 0);
               const overtimeHours = Number(record.overtimeHours || 0);
               const lateDeduction = Number(record.lateDeduction || 0);
               const lateMinutes = Number(record.lateMinutes || 0);
-
-              const oldDeductionFallback =
-                !record.lateDeduction && basePay > netPay
-                  ? basePay - netPay
-                  : lateDeduction;
+              const dailyRate = Number(record.dailyRate || monthlySalary / 30 || 0);
 
               return (
                 <div
@@ -224,7 +219,7 @@ export default function SalaryHistory() {
                       </div>
 
                       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        Net Disbursed Amount
+                        Net Paid Amount
                       </p>
 
                       <h3 className="text-3xl font-black italic uppercase leading-none tracking-tighter">
@@ -236,12 +231,19 @@ export default function SalaryHistory() {
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-5 w-full">
+                    <div className="grid grid-cols-2 lg:grid-cols-6 gap-5 w-full">
                       <ArchiveMetric
                         icon={<Wallet size={13} />}
-                        label="Base Pay"
-                        value={`PKR ${basePay.toLocaleString()}`}
+                        label="Monthly Salary"
+                        value={`PKR ${monthlySalary.toLocaleString()}`}
                         color="text-gray-900"
+                      />
+
+                      <ArchiveMetric
+                        icon={<Banknote size={13} />}
+                        label="Earned Salary"
+                        value={`PKR ${earnedSalary.toLocaleString()}`}
+                        color="text-blue-600"
                       />
 
                       <ArchiveMetric
@@ -261,12 +263,12 @@ export default function SalaryHistory() {
                       <ArchiveMetric
                         icon={<MinusCircle size={13} />}
                         label="Late Deduction"
-                        value={`- PKR ${oldDeductionFallback.toLocaleString()}`}
+                        value={`- PKR ${lateDeduction.toLocaleString()}`}
                         color="text-red-600"
                       />
 
                       <ArchiveMetric
-                        icon={<Banknote size={13} />}
+                        icon={<Clock size={13} />}
                         label="Late Minutes"
                         value={`${lateMinutes} mins`}
                         color="text-red-600"
@@ -274,11 +276,18 @@ export default function SalaryHistory() {
                     </div>
                   </div>
 
-                  <div className="mt-8 pt-6 border-t border-gray-50 grid grid-cols-1 md:grid-cols-3 gap-4 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <div className="mt-8 pt-6 border-t border-gray-50 grid grid-cols-1 md:grid-cols-4 gap-4 text-[10px] font-black uppercase tracking-widest text-gray-400">
                     <div className="bg-gray-50 rounded-2xl p-4">
                       Attendance:{" "}
                       <span className="text-blue-600">
                         {record.totalAttendance || 0} Days
+                      </span>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-2xl p-4">
+                      Daily Rate:{" "}
+                      <span className="text-blue-600">
+                        PKR {Math.round(dailyRate).toLocaleString()}
                       </span>
                     </div>
 
@@ -300,22 +309,23 @@ export default function SalaryHistory() {
               );
             })
           ) : (
-            <div className="p-20 bg-gray-50 rounded-[50px] border border-dashed border-gray-200 text-center flex flex-col items-center gap-4">
-              <Search size={40} className="text-gray-200" />
-              <p className="font-black text-gray-300 uppercase italic tracking-widest">
-                No payout history found for this employee.
-              </p>
-            </div>
+            <EmptyState text="No payout history found for this employee." />
           )}
         </div>
       ) : (
-        <div className="p-20 bg-gray-50 rounded-[50px] border border-dashed border-gray-200 text-center flex flex-col items-center gap-4">
-          <Search size={40} className="text-gray-200" />
-          <p className="font-black text-gray-300 uppercase italic tracking-widest">
-            Select an employee above to view their payout history.
-          </p>
-        </div>
+        <EmptyState text="Select an employee above to view their payout history." />
       )}
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="p-20 bg-gray-50 rounded-[50px] border border-dashed border-gray-200 text-center flex flex-col items-center gap-4">
+      <Search size={40} className="text-gray-200" />
+      <p className="font-black text-gray-300 uppercase italic tracking-widest">
+        {text}
+      </p>
     </div>
   );
 }

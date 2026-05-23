@@ -92,12 +92,8 @@ export default function PayrollPage() {
         ]);
 
         setEmployees(empSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setAttendanceData(
-          attSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-        );
-        setSalaryHistory(
-          salSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-        );
+        setAttendanceData(attSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+        setSalaryHistory(salSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
       } catch (err) {
         console.error("Fetch Error:", err);
         notify("Unable to load payroll data.");
@@ -126,7 +122,8 @@ export default function PayrollPage() {
     const baseSalary = parseFloat(emp.salary || emp.baseSalary || "0") || 0;
     const dutyHours = parseFloat(emp.dutyHours || "9") || 9;
 
-    const hourlyRate = baseSalary / 30 / dutyHours;
+    const dailyRate = baseSalary / 30;
+    const hourlyRate = dailyRate / dutyHours;
     const perMinRate = hourlyRate / 60;
 
     const empAttendance = attendanceData.filter((a) => {
@@ -146,67 +143,69 @@ export default function PayrollPage() {
 
     empAttendance.forEach((record) => {
       if (!record.date) return;
-    
+
       const recordDate = new Date(record.date);
-    
+
       if (
         recordDate.getMonth() !== today.getMonth() ||
         recordDate.getFullYear() !== today.getFullYear()
       ) {
         return;
       }
-    
+
       const inTime = toDateSafe(record.clockIn);
       const outTime = toDateSafe(record.clockOut);
-    
+
       if (!inTime || !outTime) return;
-    
-      const diffMs = outTime.getTime() - inTime.getTime();
-      const workedMins = Math.max(0, diffMs / (1000 * 60));
-    
+
+      const workedMins =
+        typeof record.workedMinutes === "number"
+          ? record.workedMinutes
+          : Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000);
+
       totalMinutes += workedMins;
       validDays++;
-    
-      const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
-      const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
-    
-      if (outTime < inTime) {
-        shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+      if (typeof record.lateMinutes === "number") {
+        lateMinutes += record.lateMinutes;
+      } else {
+        const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
+        if (inTime > shiftStart) {
+          lateMinutes += Math.max(0, (inTime.getTime() - shiftStart.getTime()) / 60000);
+        }
       }
-    
-      if (inTime > shiftStart) {
-        lateMinutes += Math.max(
-          0,
-          (inTime.getTime() - shiftStart.getTime()) / (1000 * 60)
-        );
-      }
-    
-      if (outTime > shiftEnd) {
-        overtimeMinutes += Math.max(
-          0,
-          (outTime.getTime() - shiftEnd.getTime()) / (1000 * 60)
-        );
+
+      if (typeof record.overtimeMinutes === "number") {
+        overtimeMinutes += record.overtimeMinutes;
+      } else {
+        const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
+        if (outTime < inTime) shiftEnd.setDate(shiftEnd.getDate() + 1);
+
+        if (outTime > shiftEnd) {
+          overtimeMinutes += Math.max(0, (outTime.getTime() - shiftEnd.getTime()) / 60000);
+        }
       }
     });
 
     const hours = Math.floor(totalMinutes / 60);
-const mins = Math.floor(totalMinutes % 60);
+    const mins = Math.floor(totalMinutes % 60);
 
-const overtimeHours = overtimeMinutes / 60;
+    const earnedSalary = Math.round(dailyRate * validDays);
+    const overtimeHours = overtimeMinutes / 60;
+    const overtimePay = Math.round(overtimeMinutes * perMinRate);
+    const lateDeduction = Math.round(lateMinutes * perMinRate);
 
-const overtimePay = Math.round(overtimeMinutes * perMinRate);
-
-const lateDeduction = Math.round(lateMinutes * perMinRate);
-
-const netPay = Math.max(
-  0,
-  Math.round(baseSalary + overtimePay - lateDeduction)
-);
+    const netPay = Math.max(
+      0,
+      Math.round(earnedSalary + overtimePay - lateDeduction)
+    );
 
     return {
       totalPresent: validDays,
       formattedTime: `${hours}h ${mins}m`,
       baseSalary,
+      earnedSalary,
+      dailyRate,
       dutyHours,
       hourlyRate,
       overtimeMinutes: Math.round(overtimeMinutes),
@@ -235,16 +234,23 @@ const netPay = Math.max(
         employeeName: emp.name,
         employeeEmail: emp.email || "",
         adminUid: userData.uid,
+
         baseSalary: disburseData.baseSalary,
+        earnedSalary: disburseData.earnedSalary,
+        dailyRate: disburseData.dailyRate,
         dutyHours: disburseData.dutyHours,
         hourlyRate: disburseData.hourlyRate,
+
         totalAttendance: disburseData.totalPresent,
         trackedTime: disburseData.formattedTime,
+
         overtimeMinutes: disburseData.overtimeMinutes,
         overtimeHours: Number(disburseData.overtimeHours.toFixed(2)),
         overtimePay: disburseData.overtimePay,
+
         lateMinutes: disburseData.lateMinutes,
         lateDeduction: disburseData.lateDeduction,
+
         netSalary: disburseData.netPay,
         month: currentMonth,
         year: currentYear,
@@ -335,11 +341,19 @@ const netPay = Math.max(
               </thead>
               <tbody>
                 <tr>
-                  <td>Gross Base Pay</td>
+                  <td>Monthly Base Salary</td>
                   <td style="text-align:right;">${details.baseSalary.toLocaleString()}</td>
                 </tr>
                 <tr>
-                  <td>Attendance Records (${details.totalPresent} Days / ${details.formattedTime} Tracked)</td>
+                  <td>Present Days (${details.totalPresent} Days)</td>
+                  <td style="text-align:right;">-</td>
+                </tr>
+                <tr>
+                  <td>Earned Salary (${details.totalPresent} × ${Math.round(details.dailyRate).toLocaleString()})</td>
+                  <td style="text-align:right;">${details.earnedSalary.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td>Attendance Records (${details.formattedTime} Tracked)</td>
                   <td style="text-align:right;">-</td>
                 </tr>
                 <tr>
@@ -351,7 +365,7 @@ const netPay = Math.max(
                   <td class="red" style="text-align:right;">- ${details.lateDeduction.toLocaleString()}</td>
                 </tr>
                 <tr class="total-row">
-                  <td style="border-radius:16px 0 0 16px;">NET DISBURSED PAY</td>
+                  <td style="border-radius:16px 0 0 16px;">NET PAYABLE SALARY</td>
                   <td style="text-align:right;border-radius:0 16px 16px 0;">PKR ${details.netPay.toLocaleString()}</td>
                 </tr>
               </tbody>
@@ -437,10 +451,7 @@ const netPay = Math.max(
               Your Monthly Liability
             </p>
             <h4 className="text-3xl md:text-5xl font-black italic text-white mt-2 leading-none tracking-tighter">
-              PKR{" "}
-              {employees
-                .reduce((acc, curr) => acc + (parseFloat(curr.salary) || 0), 0)
-                .toLocaleString()}
+              PKR {employees.reduce((acc, curr) => acc + (parseFloat(curr.salary) || 0), 0).toLocaleString()}
             </h4>
           </div>
           <div className="bg-white/10 p-5 rounded-3xl text-white backdrop-blur-md group-hover:scale-110 transition-transform">
@@ -477,11 +488,12 @@ const netPay = Math.max(
 
       <div className="bg-white rounded-[40px] border border-gray-100 shadow-xl overflow-hidden">
         <div className="overflow-x-auto w-full custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[1350px]">
+          <table className="w-full text-left border-collapse min-w-[1450px]">
             <thead>
               <tr className="bg-gray-50 text-gray-400 font-black text-[10px] uppercase tracking-widest">
                 <th className="p-8">Employee</th>
-                <th className="p-8 text-center">Base Salary</th>
+                <th className="p-8 text-center">Monthly Salary</th>
+                <th className="p-8 text-center">Earned Salary</th>
                 <th className="p-8">Present Days</th>
                 <th className="p-8">Tracked Time</th>
                 <th className="p-8 text-right">Overtime</th>
@@ -494,15 +506,13 @@ const netPay = Math.max(
             <tbody className="divide-y divide-gray-50 font-bold">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-10 text-center">
+                  <td colSpan={9} className="p-10 text-center">
                     <Loader2 className="animate-spin text-blue-600 mx-auto" size={32} />
                   </td>
                 </tr>
               ) : (
                 employees
-                  .filter((e) =>
-                    (e.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-                  )
+                  .filter((e) => (e.name || "").toLowerCase().includes(searchTerm.toLowerCase()))
                   .map((emp) => {
                     const details = getPayrollDetails(emp);
 
@@ -535,21 +545,24 @@ const netPay = Math.max(
                           PKR {details.baseSalary.toLocaleString()}
                         </td>
 
+                        <td className="p-6 text-center text-blue-600 italic font-black whitespace-nowrap">
+                          PKR {details.earnedSalary.toLocaleString()}
+                          <p className="text-[10px] text-gray-400 font-black uppercase">
+                            {details.totalPresent} × {Math.round(details.dailyRate).toLocaleString()}
+                          </p>
+                        </td>
+
                         <td className="p-6">
                           <div className="flex items-center gap-2 bg-gray-50 w-max px-4 py-2 rounded-xl text-gray-600 italic whitespace-nowrap">
                             <CalendarDays size={16} />
-                            <span className="font-black text-xs">
-                              {details.totalPresent} Days
-                            </span>
+                            <span className="font-black text-xs">{details.totalPresent} Days</span>
                           </div>
                         </td>
 
                         <td className="p-6">
                           <div className="flex items-center gap-2 bg-blue-50 w-max px-4 py-2 rounded-xl text-blue-700 italic whitespace-nowrap border border-blue-100">
                             <Clock size={16} />
-                            <span className="font-black text-xs tracking-wider">
-                              {details.formattedTime}
-                            </span>
+                            <span className="font-black text-xs tracking-wider">{details.formattedTime}</span>
                           </div>
                         </td>
 
@@ -572,21 +585,15 @@ const netPay = Math.max(
                         </td>
 
                         <td className="p-6 text-right">
-                          <div className="flex flex-col items-end">
-                            <p className="text-2xl font-black text-green-600 tracking-tighter italic leading-none whitespace-nowrap">
-                              PKR {details.netPay.toLocaleString()}
-                            </p>
-                          </div>
+                          <p className="text-2xl font-black text-green-600 tracking-tighter italic leading-none whitespace-nowrap">
+                            PKR {details.netPay.toLocaleString()}
+                          </p>
                         </td>
 
                         <td className="p-6">
                           <div className="flex flex-col gap-2">
                             <button
-                              disabled={
-                                !isDisburseEnabled ||
-                                details.netPay === 0 ||
-                                hasBeenPaidThisMonth
-                              }
+                              disabled={!isDisburseEnabled || details.netPay === 0 || hasBeenPaidThisMonth}
                               onClick={() => openDisburseModal(emp, details)}
                               className={`w-full py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap ${
                                 hasBeenPaidThisMonth
@@ -596,29 +603,15 @@ const netPay = Math.max(
                                     : "bg-gray-100 text-gray-400 cursor-not-allowed"
                               }`}
                             >
-                              {hasBeenPaidThisMonth ? (
-                                <CheckCircle2 size={14} />
-                              ) : !isDisburseEnabled || details.netPay === 0 ? (
-                                <Lock size={14} />
-                              ) : (
-                                <Banknote size={14} />
-                              )}
-                              {hasBeenPaidThisMonth
-                                ? "Paid"
-                                : !isDisburseEnabled
-                                  ? "Locked"
-                                  : "Disburse"}
+                              {hasBeenPaidThisMonth ? <CheckCircle2 size={14} /> : !isDisburseEnabled || details.netPay === 0 ? <Lock size={14} /> : <Banknote size={14} />}
+                              {hasBeenPaidThisMonth ? "Paid" : !isDisburseEnabled ? "Locked" : "Disburse"}
                             </button>
 
                             <button
                               onClick={() => handleGenerateSlip(emp, details)}
                               className="w-full py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 whitespace-nowrap bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white active:scale-95"
                             >
-                              {!hasAccess ? (
-                                <Crown size={14} className="text-amber-500" />
-                              ) : (
-                                <FileText size={14} />
-                              )}
+                              {!hasAccess ? <Crown size={14} className="text-amber-500" /> : <FileText size={14} />}
                               Generate Slip
                             </button>
                           </div>
@@ -649,16 +642,19 @@ const netPay = Math.max(
 
             <div className="p-8 space-y-4">
               <p className="text-gray-500 font-bold text-center italic text-sm leading-relaxed">
-                Kya aap waqai <strong>{disburseData.emp.name}</strong> ko is
-                maheene ki salary{" "}
+                Kya aap waqai <strong>{disburseData.emp.name}</strong> ko{" "}
                 <strong>PKR {disburseData.netPay.toLocaleString()}</strong>{" "}
                 disburse karna chahte hain?
               </p>
 
               <div className="bg-gray-50 rounded-3xl p-5 space-y-2 text-xs font-black uppercase tracking-widest">
                 <div className="flex justify-between">
-                  <span className="text-gray-400">Base</span>
+                  <span className="text-gray-400">Monthly</span>
                   <span>PKR {disburseData.baseSalary.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-blue-600">
+                  <span>Earned</span>
+                  <span>PKR {disburseData.earnedSalary.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-green-600">
                   <span>Overtime</span>
@@ -719,8 +715,7 @@ const netPay = Math.max(
 
             <div className="p-8 space-y-6">
               <p className="text-gray-500 font-bold italic text-sm text-center leading-relaxed">
-                Premium access ke liye payment transfer karein aur WhatsApp par
-                screenshot bhej dein.
+                Premium access ke liye payment transfer karein aur WhatsApp par screenshot bhej dein.
               </p>
 
               <a

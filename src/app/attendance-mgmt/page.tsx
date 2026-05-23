@@ -144,6 +144,9 @@ export default function AttendanceManagement() {
               inLocation: data.clockInLocation || null,
               outLocation: data.clockOutLocation || null,
               manualPunchOut: data.manualPunchOut || false,
+              workedMinutes: data.workedMinutes || 0,
+              overtimeMinutes: data.overtimeMinutes || 0,
+              lateMinutes: data.lateMinutes || 0,
             },
             backgroundColor: clockOutDate ? "#16a34a" : "#2563eb",
             borderColor: clockOutDate ? "#16a34a" : "#2563eb",
@@ -190,6 +193,7 @@ export default function AttendanceManagement() {
     if (!selectedEvent?.clockOut) return "Shift In Progress...";
 
     const baseSalary = parseFloat(selectedEmp?.salary || "0");
+    const dutyHours = parseFloat(selectedEmp?.dutyHours || "9") || 9;
 
     if (baseSalary === 0) return "Base Salary Not Set";
 
@@ -197,7 +201,7 @@ export default function AttendanceManagement() {
       selectedEvent.clockOut.getTime() - selectedEvent.clockIn.getTime();
 
     const diffMins = Math.max(0, diffMs / (1000 * 60));
-    const perMinRate = baseSalary / 30 / 9 / 60;
+    const perMinRate = baseSalary / 30 / dutyHours / 60;
     const earned = diffMins * perMinRate;
 
     return `PKR ${earned.toLocaleString(undefined, {
@@ -206,66 +210,117 @@ export default function AttendanceManagement() {
     })}`;
   };
 
+  const buildShiftDate = (dateString: string, timeString: string) => {
+    const [hours, minutes] = (timeString || "09:00").split(":").map(Number);
+    const date = new Date(dateString);
+    date.setHours(hours || 0, minutes || 0, 0, 0);
+    return date;
+  };
+
+  const calculateShiftStats = (
+    clockIn: Date,
+    clockOut: Date,
+    recordDate: string
+  ) => {
+    const shiftStart = buildShiftDate(
+      recordDate,
+      selectedEmp?.shiftStart || "09:00"
+    );
+    const shiftEnd = buildShiftDate(
+      recordDate,
+      selectedEmp?.shiftEnd || "18:00"
+    );
+
+    if (clockOut < clockIn) {
+      shiftEnd.setDate(shiftEnd.getDate() + 1);
+    }
+
+    return {
+      workedMinutes: Math.max(
+        0,
+        Math.round((clockOut.getTime() - clockIn.getTime()) / 60000)
+      ),
+      lateMinutes:
+        clockIn > shiftStart
+          ? Math.round((clockIn.getTime() - shiftStart.getTime()) / 60000)
+          : 0,
+      overtimeMinutes:
+        clockOut > shiftEnd
+          ? Math.round((clockOut.getTime() - shiftEnd.getTime()) / 60000)
+          : 0,
+      shiftStart: selectedEmp?.shiftStart || "09:00",
+      shiftEnd: selectedEmp?.shiftEnd || "18:00",
+    };
+  };
+
   const handleManualPunchOut = async () => {
     if (!selectedEvent?.docId) {
       notify("Attendance record missing.");
       return;
     }
-  
+
     if (!selectedEvent?.clockIn) {
       notify("Clock-in record missing.");
       return;
     }
-  
+
     if (selectedEvent?.clockOut) {
       notify("This shift is already completed.");
       return;
     }
-  
+
     if (!manualPunchOutTime) {
       notify("Please select punch-out time.");
       return;
     }
-  
+
     const recordDate = selectedEvent.fullData?.date;
-  
+
     if (!recordDate) {
       notify("Attendance date missing.");
       return;
     }
-  
+
     const [rawHour, rawMinute] = manualPunchOutTime.split(":").map(Number);
-  
+
     let manualOutDate = new Date(recordDate);
     manualOutDate.setHours(rawHour, rawMinute, 0, 0);
-  
-    // ✅ Fix: If browser returns 06:00 but user means 06:00 PM,
-    // and punch-in is already after that time, convert it to PM.
+
     if (manualOutDate <= selectedEvent.clockIn && rawHour < 12) {
       manualOutDate.setHours(rawHour + 12, rawMinute, 0, 0);
     }
-  
-    // ✅ Overnight shift fallback: if still before punch-in, move to next day
+
     if (manualOutDate <= selectedEvent.clockIn) {
       const nextDayOut = new Date(manualOutDate);
       nextDayOut.setDate(nextDayOut.getDate() + 1);
-  
+
       if (nextDayOut > selectedEvent.clockIn) {
         manualOutDate = nextDayOut;
       }
     }
-  
+
     if (manualOutDate <= selectedEvent.clockIn) {
       notify("Punch-out time must be after punch-in time.");
       return;
     }
-  
+
+    const stats = calculateShiftStats(
+      selectedEvent.clockIn,
+      manualOutDate,
+      recordDate
+    );
+
     setManualSaving(true);
-  
+
     try {
       await updateDoc(doc(db, "attendance", selectedEvent.docId), {
         clockOut: manualOutDate,
         clockOutLocation: null,
+        workedMinutes: stats.workedMinutes,
+        overtimeMinutes: stats.overtimeMinutes,
+        lateMinutes: stats.lateMinutes,
+        shiftStart: stats.shiftStart,
+        shiftEnd: stats.shiftEnd,
         manualPunchOut: true,
         manualPunchOutBy: userData?.uid || "",
         manualPunchOutByName: userData?.name || "Manager",
@@ -273,14 +328,17 @@ export default function AttendanceManagement() {
         status: "Completed",
         updatedAt: serverTimestamp(),
       });
-  
+
       setSelectedEvent({
         ...selectedEvent,
         clockOut: manualOutDate,
         outLocation: null,
+        workedMinutes: stats.workedMinutes,
+        overtimeMinutes: stats.overtimeMinutes,
+        lateMinutes: stats.lateMinutes,
         manualPunchOut: true,
       });
-  
+
       notify("Manual punch-out time saved successfully.");
     } catch (error) {
       console.error("Manual punch-out error:", error);
@@ -492,6 +550,21 @@ export default function AttendanceManagement() {
                 manual={selectedEvent.manualPunchOut}
               />
 
+              <div className="grid grid-cols-3 gap-3">
+                <MiniMetric
+                  label="Worked"
+                  value={`${selectedEvent.workedMinutes || 0}m`}
+                />
+                <MiniMetric
+                  label="Overtime"
+                  value={`${selectedEvent.overtimeMinutes || 0}m`}
+                />
+                <MiniMetric
+                  label="Late"
+                  value={`${selectedEvent.lateMinutes || 0}m`}
+                />
+              </div>
+
               {!selectedEvent.clockOut && (
                 <div className="bg-red-50 border border-red-100 rounded-3xl p-5 space-y-4">
                   <div className="flex items-center gap-3 text-red-600">
@@ -634,11 +707,6 @@ function LogRow({
   getMapLink: (loc: { lat: number; lng: number }) => string;
   manual?: boolean;
 }) {
-  const colorClass =
-    color === "blue"
-      ? "bg-blue-600 text-white shadow-blue-100 text-blue-600 hover:bg-blue-600"
-      : "bg-red-500 text-white shadow-red-100 text-red-500 hover:bg-red-500";
-
   return (
     <div className="flex items-center justify-between bg-gray-50 p-5 rounded-3xl border border-gray-100 group">
       <div className="flex items-center gap-4">
@@ -679,14 +747,23 @@ function LogRow({
           } rounded-xl border ${
             color === "blue" ? "border-blue-50" : "border-red-50"
           } shadow-sm ${
-            color === "blue"
-              ? "hover:bg-blue-600"
-              : "hover:bg-red-500"
+            color === "blue" ? "hover:bg-blue-600" : "hover:bg-red-500"
           } hover:text-white transition-all group-hover:scale-105`}
         >
           <MapPin size={20} />
         </a>
       )}
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3 text-center">
+      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">
+        {label}
+      </p>
+      <p className="font-black text-gray-900 italic">{value}</p>
     </div>
   );
 }
