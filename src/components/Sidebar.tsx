@@ -48,33 +48,61 @@ export default function Sidebar() {
   const getMenuItems = () => {
     const OWNER_EMAIL = "aliyanasif503@gmail.com";
     let items: any[] = [];
-
+  
     if (userData?.email === OWNER_EMAIL) {
-      items.push({ icon: ShieldCheck, label: "Command", href: "/owner-control" }); 
+      items.push({
+        icon: ShieldCheck,
+        label: "Command",
+        href: "/owner-control",
+      });
     }
-
-    if (role === "Admin" || role === "Super Admin" || role === "Manager") {
+  
+    if (role === "Admin" || role === "Super Admin") {
       items.push(
         { icon: LayoutDashboard, label: "Dashboard", href: "/" },
         { icon: Clock, label: "Attendance Admin", href: "/attendance-mgmt" },
-        { icon: ClipboardCheck, label: "Requests Hub", href: "/requests-hub", badge: pendingCount > 0 },
-        { icon: Send, label: "My Leave Portal", href: "/leaves" },
-        { icon: BarChart3, label: "Staff Performance", href: "/performance" },
-        // ...(role !== "Super Admin" ? [{ icon: MapPin, label: "Clock In/Out", href: "/attendance" }] : []),
+        {
+          icon: ClipboardCheck,
+          label: "Requests Hub",
+          href: "/requests-hub",
+          badge: pendingCount > 0,
+        },
         { icon: Users, label: "Manage Staff", href: "/employees" },
+        { icon: BarChart3, label: "Staff Performance", href: "/performance" },
         { icon: CreditCard, label: "Process Payroll", href: "/payroll" },
         { icon: History, label: "Salary History", href: "/salary-history" }
       );
+  
       return items;
     }
-    
+  
+    if (role === "Manager") {
+      items.push(
+        { icon: LayoutDashboard, label: "Dashboard", href: "/" },
+        { icon: Clock, label: "Attendance Admin", href: "/attendance-mgmt" },
+        {
+          icon: ClipboardCheck,
+          label: "Requests Hub",
+          href: "/requests-hub",
+          badge: pendingCount > 0,
+        },
+        { icon: Send, label: "Leave Portal", href: "/leaves" },
+        { icon: MapPin, label: "Clock In/Out", href: "/attendance" },
+        { icon: BarChart3, label: "Staff Performance", href: "/performance" },
+        { icon: CreditCard, label: "Process Payroll", href: "/payroll" },
+        { icon: History, label: "Salary History", href: "/salary-history" }
+      );
+  
+      return items;
+    }
+  
     items.push(
       { icon: UserCircle, label: "My Profile", href: "/profile" },
       { icon: MapPin, label: "Clock In/Out", href: "/attendance" },
       { icon: CalendarIcon, label: "Full Calendar", href: "/calendar" },
       { icon: Send, label: "Leave Portal", href: "/leaves" }
     );
-
+  
     return items;
   };
 

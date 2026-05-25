@@ -35,10 +35,12 @@ const AuthContext = createContext<AuthContextType>({
 const normalizeRole = (role?: string) => {
   const value = (role || "").toLowerCase().trim();
 
+  if (value === "manager") return "Manager";
+
   if (
     value === "admin" ||
     value === "owner" ||
-    value === "manager" ||
+    value === "boss" ||
     value === "super admin" ||
     value === "superadmin"
   ) {
