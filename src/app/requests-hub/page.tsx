@@ -57,6 +57,11 @@ export default function RequestsHub() {
     // Multi-tenant guard
     if (!user?.uid) return;
 
+    const workspaceUid =
+  userData?.workspaceUid ||
+  userData?.adminUid ||
+  userData?.uid;
+
     // 1. Fetch Leaves (Filtered by Admin)
     const qLeaves = query(
       collection(db, "leaves"), 
