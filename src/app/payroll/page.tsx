@@ -70,29 +70,25 @@ export default function PayrollPage() {
 
     const fetchData = async () => {
       try {
-        const empQuery = query(
-          collection(db, "employees"),
-          adminUid:
+        const workspaceUid =
   userData.workspaceUid ||
   userData.adminUid ||
-  userData.uid,
-        );
+  userData.uid;
 
-        const attQuery = query(
-          collection(db, "attendance"),
-          adminUid:
-  userData.workspaceUid ||
-  userData.adminUid ||
-  userData.uid,
-        );
+const empQuery = query(
+  collection(db, "employees"),
+  where("adminUid", "==", workspaceUid)
+);
 
-        const salQuery = query(
-          collection(db, "salary_history"),
-          adminUid:
-  userData.workspaceUid ||
-  userData.adminUid ||
-  userData.uid,
-        );
+const attQuery = query(
+  collection(db, "attendance"),
+  where("adminUid", "==", workspaceUid)
+);
+
+const salQuery = query(
+  collection(db, "salary_history"),
+  where("adminUid", "==", workspaceUid)
+);
 
         const [empSnap, attSnap, salSnap] = await Promise.all([
           getDocs(empQuery),
@@ -244,7 +240,10 @@ export default function PayrollPage() {
         employeeUid: emp.uid || "",
         employeeName: emp.name,
         employeeEmail: emp.email || "",
-        adminUid: userData.uid,
+        adminUid:
+  userData.workspaceUid ||
+  userData.adminUid ||
+  userData.uid,
 
         baseSalary: disburseData.baseSalary,
         earnedSalary: disburseData.earnedSalary,
