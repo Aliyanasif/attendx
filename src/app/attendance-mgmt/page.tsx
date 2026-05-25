@@ -118,18 +118,28 @@ export default function AttendanceManagement() {
 
     const q = query(
       collection(db, "attendance"),
-      where("employeeName", "==", selectedEmp.name),
       where("adminUid", "==", adminUid)
     );
 
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        const attendanceData = snap.docs.map((document) => {
+        const attendanceData = snap.docs
+        .map((document) => {
           const data = document.data();
+      
+          const matched =
+            data.employeeId === selectedEmp.id ||
+            data.employeeUid === selectedEmp.uid ||
+            data.uid === selectedEmp.uid ||
+            data.email === selectedEmp.email ||
+            data.employeeName === selectedEmp.name;
+      
+          if (!matched) return null;
+      
           const clockInDate = data.clockIn?.toDate?.() || null;
           const clockOutDate = data.clockOut?.toDate?.() || null;
-
+      
           return {
             id: document.id,
             title: `IN: ${
@@ -156,9 +166,8 @@ export default function AttendanceManagement() {
             backgroundColor: clockOutDate ? "#16a34a" : "#2563eb",
             borderColor: clockOutDate ? "#16a34a" : "#2563eb",
           };
-        });
-
-        setEvents(attendanceData);
+        })
+        .filter(Boolean);
       },
       (error) => {
         console.error("Attendance fetch error:", error);
