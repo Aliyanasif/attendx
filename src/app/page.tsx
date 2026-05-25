@@ -67,15 +67,20 @@ export default function ManagerDashboard() {
 
     setLoading(true);
 
-    const empQuery = query(
-      collection(db, "employees"),
-      where("adminUid", "==", workspaceUid)
-    );
+const workspaceUid =
+  userData?.workspaceUid ||
+  userData?.adminUid ||
+  userData?.uid;
 
-    const attQuery = query(
-      collection(db, "attendance"),
-      where("adminUid", "==", workspaceUid)
-    );
+const empQuery = query(
+  collection(db, "employees"),
+  where("adminUid", "==", workspaceUid)
+);
+
+const attQuery = query(
+  collection(db, "attendance"),
+  where("adminUid", "==", workspaceUid)
+);
 
     const unsubEmp = onSnapshot(
       empQuery,
