@@ -126,11 +126,11 @@ const salQuery = query(
   const getPayrollDetails = (emp: any) => {
     const baseSalary = parseFloat(emp.salary || emp.baseSalary || "0") || 0;
     const dutyHours = parseFloat(emp.dutyHours || "9") || 9;
-
+  
     const dailyRate = baseSalary / 30;
     const hourlyRate = dailyRate / dutyHours;
     const perMinRate = hourlyRate / 60;
-
+  
     const empAttendance = attendanceData.filter((a) => {
       return (
         a.employeeId === emp.id ||
@@ -140,73 +140,67 @@ const salQuery = query(
         a.employeeName === emp.name
       );
     });
-
-    
-
+  
     let totalMinutes = 0;
     let validDays = 0;
     let overtimeMinutes = 0;
     let lateMinutes = 0;
-
+  
     empAttendance.forEach((record) => {
       if (!record.date) return;
-
+  
       const recordDate = new Date(record.date);
-
+  
       if (
         recordDate.getMonth() !== today.getMonth() ||
         recordDate.getFullYear() !== today.getFullYear()
       ) {
         return;
       }
-
+  
       const inTime = toDateSafe(record.clockIn);
       const outTime = toDateSafe(record.clockOut);
-
+  
       if (!inTime || !outTime) return;
-
+  
       const workedMins =
         typeof record.workedMinutes === "number"
           ? record.workedMinutes
           : Math.max(0, (outTime.getTime() - inTime.getTime()) / 60000);
-
+  
       totalMinutes += workedMins;
       validDays++;
-
+  
       if (typeof record.lateMinutes === "number") {
         lateMinutes += record.lateMinutes;
       } else {
         const shiftStart = buildShiftDate(record.date, emp.shiftStart || "09:00");
         if (inTime > shiftStart) {
-          lateMinutes += Math.max(0, (inTime.getTime() - shiftStart.getTime()) / 60000);
+          lateMinutes += Math.max(
+            0,
+            (inTime.getTime() - shiftStart.getTime()) / 60000
+          );
         }
       }
-
-      if (typeof record.overtimeMinutes === "number") {
-        overtimeMinutes += record.overtimeMinutes;
-      } else {
-        const shiftEnd = buildShiftDate(record.date, emp.shiftEnd || "18:00");
-        if (outTime < inTime) shiftEnd.setDate(shiftEnd.getDate() + 1);
-
-        if (outTime > shiftEnd) {
-          overtimeMinutes += Math.max(0, (outTime.getTime() - shiftEnd.getTime()) / 60000);
-        }
+  
+      if (record.overtimeApprovalStatus === "Approved") {
+        overtimeMinutes += Number(record.approvedOvertimeMinutes || 0);
       }
     });
-
+  
     const hours = Math.floor(totalMinutes / 60);
     const mins = Math.floor(totalMinutes % 60);
-
+  
     const earnedSalary = Math.round(dailyRate * validDays);
     const overtimeHours = overtimeMinutes / 60;
     const overtimePay = Math.round(overtimeMinutes * perMinRate);
     const lateDeduction = Math.round(lateMinutes * perMinRate);
-
+  
     const netPay = Math.max(
       0,
       Math.round(earnedSalary + overtimePay - lateDeduction)
     );
-
+  
     return {
       totalPresent: validDays,
       formattedTime: `${hours}h ${mins}m`,
@@ -255,8 +249,10 @@ const salQuery = query(
         trackedTime: disburseData.formattedTime,
 
         overtimeMinutes: disburseData.overtimeMinutes,
+        approvedOvertimeMinutes: disburseData.overtimeMinutes,
         overtimeHours: Number(disburseData.overtimeHours.toFixed(2)),
         overtimePay: disburseData.overtimePay,
+        overtimePolicy: "Approved overtime only",
 
         lateMinutes: disburseData.lateMinutes,
         lateDeduction: disburseData.lateDeduction,
@@ -367,7 +363,7 @@ const salQuery = query(
                   <td style="text-align:right;">-</td>
                 </tr>
                 <tr>
-                  <td class="green">Overtime Pay (${details.overtimeHours.toFixed(2)} Hours)</td>
+                <td class="green">Approved Overtime Pay (${details.overtimeHours.toFixed(2)} Hours)</td>
                   <td class="green" style="text-align:right;">+ ${details.overtimePay.toLocaleString()}</td>
                 </tr>
                 <tr>
