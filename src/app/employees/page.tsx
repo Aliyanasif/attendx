@@ -246,7 +246,16 @@ export default function ManageStaffPage() {
         shiftStart: formData.shiftStart,
         shiftEnd: formData.shiftEnd,
         dutyHours: formData.dutyHours,
+      
         officeName: userData?.officeName || "Organization Name",
+      
+        officeLocation: userData?.officeLocation || null,
+      
+        workspaceUid:
+          userData?.workspaceUid ||
+          userData?.adminUid ||
+          user?.uid,
+      
         status: "active",
       };
 
@@ -290,7 +299,12 @@ export default function ManageStaffPage() {
         await setDoc(doc(db, "employees", newUserId), {
           ...safeEmployeeData,
           uid: newUserId,
-          adminUid: user.uid,
+        
+          adminUid:
+            userData?.workspaceUid ||
+            userData?.adminUid ||
+            user.uid,
+        
           createdAt: serverTimestamp(),
           setupComplete: true,
         });

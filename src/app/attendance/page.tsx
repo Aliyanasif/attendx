@@ -2,7 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 import {
   Clock,
@@ -110,6 +116,63 @@ export default function AttendancePage() {
     });
   };
 
+  const getDistanceMeters = (
+    a: { lat: number; lng: number },
+    b: { lat: number; lng: number }
+  ) => {
+    const R = 6371000;
+    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+    const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+    const lat1 = (a.lat * Math.PI) / 180;
+    const lat2 = (b.lat * Math.PI) / 180;
+
+    const x =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  };
+
+  const getOfficeLocation = async () => {
+    if (userData?.officeLocation?.lat && userData?.officeLocation?.lng) {
+      return userData.officeLocation;
+    }
+
+    if (!userData?.adminUid) return null;
+
+    const adminSnap = await getDoc(doc(db, "employees", userData.adminUid));
+
+    if (!adminSnap.exists()) return null;
+
+    return adminSnap.data()?.officeLocation || null;
+  };
+
+  const verifyOfficeRange = async (userLocation: LocationData) => {
+    const officeLocation = await getOfficeLocation();
+
+    if (!officeLocation?.lat || !officeLocation?.lng) {
+      throw "Office location is not set. Please contact admin.";
+    }
+
+    const radiusMeters = Number(officeLocation.radiusMeters || 100);
+
+    const distance = getDistanceMeters(
+      { lat: userLocation.lat, lng: userLocation.lng },
+      { lat: officeLocation.lat, lng: officeLocation.lng }
+    );
+
+    if (distance > radiusMeters) {
+      throw `You are outside office range. Distance: ${Math.round(
+        distance
+      )}m. Allowed range: ${radiusMeters}m.`;
+    }
+
+    return {
+      distanceMeters: Math.round(distance),
+      radiusMeters,
+    };
+  };
+
   const buildShiftDate = (dateString: string, timeString: string) => {
     const [hours, minutes] = (timeString || "09:00").split(":").map(Number);
     const date = new Date(dateString);
@@ -173,64 +236,8 @@ export default function AttendancePage() {
       notify("Verifying your live location... 📍");
 
       const userLocation = await getLocation();
-      
       const locationCheck = await verifyOfficeRange(userLocation);
-      const getDistanceMeters = (
-        a: { lat: number; lng: number },
-        b: { lat: number; lng: number }
-      ) => {
-        const R = 6371000;
-        const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-        const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-        const lat1 = (a.lat * Math.PI) / 180;
-        const lat2 = (b.lat * Math.PI) / 180;
-      
-        const x =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-      
-        return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-      };
-      
-      const getOfficeLocation = async () => {
-        if (userData?.officeLocation?.lat && userData?.officeLocation?.lng) {
-          return userData.officeLocation;
-        }
-      
-        if (!userData?.adminUid) return null;
-      
-        const adminSnap = await getDoc(doc(db, "employees", userData.adminUid));
-      
-        if (!adminSnap.exists()) return null;
-      
-        return adminSnap.data()?.officeLocation || null;
-      };
-      
-      const verifyOfficeRange = async (userLocation: LocationData) => {
-        const officeLocation = await getOfficeLocation();
-      
-        if (!officeLocation?.lat || !officeLocation?.lng) {
-          throw "Office location is not set. Please contact admin.";
-        }
-      
-        const radiusMeters = Number(officeLocation.radiusMeters || 100);
-      
-        const distance = getDistanceMeters(
-          { lat: userLocation.lat, lng: userLocation.lng },
-          { lat: officeLocation.lat, lng: officeLocation.lng }
-        );
-      
-        if (distance > radiusMeters) {
-          throw `You are outside office range. Distance: ${Math.round(
-            distance
-          )}m. Allowed range: ${radiusMeters}m.`;
-        }
-      
-        return {
-          distanceMeters: Math.round(distance),
-          radiusMeters,
-        };
-      };
+
       const attRef = doc(db, "attendance", `${user.uid}_${todayDate}`);
       const attSnap = await getDoc(attRef);
       const now = new Date();
@@ -257,21 +264,30 @@ export default function AttendancePage() {
             employeeName: userData.name || user.displayName || "Anonymous",
             employeeEmail: userData.email || user.email || "",
             adminUid: userData.adminUid,
+            workspaceUid:
+              userData.workspaceUid || userData.adminUid || user.uid,
             officeName: userData.officeName || "",
             date: todayDate,
+
             clockIn: now,
             clockInServerTime: serverTimestamp(),
             clockInLocation: userLocation,
             clockInOfficeVerified: true,
             clockInDistanceFromOfficeMeters: locationCheck.distanceMeters,
             clockInAllowedOfficeRadiusMeters: locationCheck.radiusMeters,
+
             clockOut: null,
             clockOutLocation: null,
+
             workedMinutes: 0,
             overtimeMinutes: 0,
+            approvedOvertimeMinutes: 0,
             lateMinutes: 0,
+
             shiftStart: userData?.shiftStart || "09:00",
             shiftEnd: userData?.shiftEnd || "18:00",
+
+            overtimeApprovalStatus: "None",
             status: "Present",
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
@@ -317,18 +333,34 @@ export default function AttendancePage() {
           clockOutOfficeVerified: true,
           clockOutDistanceFromOfficeMeters: locationCheck.distanceMeters,
           clockOutAllowedOfficeRadiusMeters: locationCheck.radiusMeters,
+
           workedMinutes: stats.workedMinutes,
           overtimeMinutes: stats.overtimeMinutes,
+          approvedOvertimeMinutes: stats.overtimeMinutes > 0 ? 0 : 0,
           lateMinutes: stats.lateMinutes,
+
           shiftStart: stats.shiftStart,
           shiftEnd: stats.shiftEnd,
-          status: "Completed",
+
+          overtimeApprovalStatus:
+            stats.overtimeMinutes > 0 ? "Pending" : "None",
+
+          status:
+            stats.overtimeMinutes > 0
+              ? "Completed - Overtime Pending"
+              : "Completed",
+
           updatedAt: serverTimestamp(),
         });
 
         setClockOutTime(dayjs(now).format("hh:mm A"));
         setStatus("completed");
-        notify("Clocked Out Successfully! 🔴");
+
+        if (stats.overtimeMinutes > 0) {
+          notify("Clocked out. Overtime sent for approval. 🕒");
+        } else {
+          notify("Clocked Out Successfully! 🔴");
+        }
       }
     } catch (error: any) {
       console.error("Punch Error:", error);
