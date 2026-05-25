@@ -29,10 +29,19 @@ export default function SalaryHistory() {
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  const workspaceUid =
+  userData?.workspaceUid ||
+  userData?.adminUid ||
+  userData?.uid;
   
 
   useEffect(() => {
     if (authLoading || !user?.uid || userData?.role === "Staff") return;
+
+    const workspaceUid =
+  userData?.workspaceUid ||
+  userData?.adminUid ||
+  userData?.uid;
 
     const fetchStaff = async () => {
       try {
