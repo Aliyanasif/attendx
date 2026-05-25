@@ -35,6 +35,11 @@ export default function PerformancePage() {
     // 🛡️ Multi-Tenant Check
     if (!userData?.uid || userData?.role === "Staff") return;
 
+    const workspaceUid =
+  userData?.workspaceUid ||
+  userData?.adminUid ||
+  userData?.uid;
+
     const fetchPerformance = async () => {
       try {
         // 1. Fetch Employees to get their actual shift timings
