@@ -31,12 +31,21 @@ import {
   Fingerprint,
   Eye,
   EyeOff,
+  MapPin,
+  Navigation,
 } from "lucide-react";
+
+type LocationData = {
+  lat: number;
+  lng: number;
+  accuracy: number;
+};
 
 export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const router = useRouter();
@@ -45,8 +54,43 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [officeName, setOfficeName] = useState("");
+  const [officeLocation, setOfficeLocation] = useState<LocationData | null>(
+    null
+  );
 
   const cleanEmail = email.trim().toLowerCase();
+
+  const captureOfficeLocation = () => {
+    setLocationLoading(true);
+
+    if (!navigator.geolocation) {
+      notify("GPS is not supported in this browser.");
+      setLocationLoading(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setOfficeLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+
+        notify("Office location captured successfully 📍");
+        setLocationLoading(false);
+      },
+      () => {
+        notify("Location access denied. Please allow GPS permission.");
+        setLocationLoading(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+  };
 
   const handleGoogleSignIn = async () => {
     setLoading(true);
@@ -75,11 +119,15 @@ export default function LoginPage() {
 
         await setDoc(userDocRef, {
           uid: res.user.uid,
+          adminUid: res.user.uid,
+          workspaceUid: res.user.uid,
           name: res.user.displayName || "Owner",
           email: normalizedEmail,
           officeName: "",
+          officeLocation: null,
           role: "Super Admin",
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           status: "active",
           profilePic: res.user.photoURL || "",
           setupComplete: false,
@@ -119,7 +167,7 @@ export default function LoginPage() {
       setResetLoading(true);
       await sendPasswordResetEmail(auth, cleanEmail);
       notify("Password reset email sent successfully 📩");
-    } catch (error: any) {
+    } catch {
       notify("Failed to send reset email. Please check the email.");
     } finally {
       setResetLoading(false);
@@ -132,6 +180,12 @@ export default function LoginPage() {
 
     try {
       if (isRegistering) {
+        if (!officeLocation) {
+          notify("Please capture your office location first.");
+          setLoading(false);
+          return;
+        }
+
         const res = await createUserWithEmailAndPassword(
           auth,
           cleanEmail,
@@ -142,11 +196,20 @@ export default function LoginPage() {
 
         await setDoc(doc(db, "employees", res.user.uid), {
           uid: res.user.uid,
+          adminUid: res.user.uid,
+          workspaceUid: res.user.uid,
           name: name.trim(),
           officeName: officeName.trim(),
+          officeLocation: {
+            lat: officeLocation.lat,
+            lng: officeLocation.lng,
+            accuracy: officeLocation.accuracy,
+            radiusMeters: 100,
+          },
           email: cleanEmail,
           role: "Super Admin",
           createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           status: "active",
           setupComplete: true,
         });
@@ -156,6 +219,7 @@ export default function LoginPage() {
         notify("Account created! 🚀 Please verify your email to login.");
         setIsRegistering(false);
         setPassword("");
+        setOfficeLocation(null);
       } else {
         const res = await signInWithEmailAndPassword(
           auth,
@@ -199,6 +263,7 @@ export default function LoginPage() {
     setIsRegistering((prev) => !prev);
     setShowPassword(false);
     setPassword("");
+    setOfficeLocation(null);
   };
 
   return (
@@ -238,62 +303,76 @@ export default function LoginPage() {
             <form onSubmit={handleAuth} className="space-y-4">
               {isRegistering && (
                 <>
-                  <div className="group">
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center gap-4 focus-within:border-blue-600 focus-within:bg-white transition-all shadow-sm">
-                      <User
-                        size={20}
-                        className="text-gray-400 group-focus-within:text-blue-600"
-                      />
+                  <InputBox icon={<User size={20} />} value={name}>
+                    <input
+                      required
+                      placeholder="Your Full Name"
+                      className="bg-transparent outline-none w-full font-bold text-sm"
+                      value={name}
+                      autoComplete="name"
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </InputBox>
 
-                      <input
-                        required
-                        placeholder="Your Full Name"
-                        className="bg-transparent outline-none w-full font-bold text-sm"
-                        value={name}
-                        autoComplete="name"
-                        onChange={(e) => setName(e.target.value)}
-                      />
+                  <InputBox icon={<Building2 size={20} />} value={officeName}>
+                    <input
+                      required
+                      placeholder="Office Name"
+                      className="bg-transparent outline-none w-full font-bold text-sm"
+                      value={officeName}
+                      autoComplete="organization"
+                      onChange={(e) => setOfficeName(e.target.value)}
+                    />
+                  </InputBox>
+
+                  <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <MapPin size={20} className="text-blue-600 shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                          Office Location
+                        </p>
+                        <p className="text-xs text-gray-500 font-bold italic">
+                          Stand inside your office and capture GPS location.
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="group">
-                    <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center gap-4 focus-within:border-blue-600 focus-within:bg-white transition-all shadow-sm">
-                      <Building2
-                        size={20}
-                        className="text-gray-400 group-focus-within:text-blue-600"
-                      />
+                    {officeLocation && (
+                      <div className="bg-white rounded-xl px-4 py-3 text-[10px] font-black uppercase tracking-widest text-green-600 border border-green-100">
+                        Location captured • Accuracy:{" "}
+                        {Math.round(officeLocation.accuracy)}m
+                      </div>
+                    )}
 
-                      <input
-                        required
-                        placeholder="Office Name"
-                        className="bg-transparent outline-none w-full font-bold text-sm"
-                        value={officeName}
-                        autoComplete="organization"
-                        onChange={(e) => setOfficeName(e.target.value)}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={captureOfficeLocation}
+                      disabled={locationLoading || loading}
+                      className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {locationLoading ? (
+                        <Loader2 className="animate-spin" size={16} />
+                      ) : (
+                        <Navigation size={16} />
+                      )}
+                      {officeLocation ? "Update Location" : "Use Current Location"}
+                    </button>
                   </div>
                 </>
               )}
 
-              <div className="group">
-                <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center gap-4 focus-within:border-blue-600 focus-within:bg-white transition-all shadow-sm">
-                  <Mail
-                    size={20}
-                    className="text-gray-400 group-focus-within:text-blue-600"
-                  />
-
-                  <input
-                    required
-                    type="email"
-                    placeholder="Email Address"
-                    className="bg-transparent outline-none w-full font-bold text-sm"
-                    value={email}
-                    autoComplete="email"
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
+              <InputBox icon={<Mail size={20} />} value={email}>
+                <input
+                  required
+                  type="email"
+                  placeholder="Email Address"
+                  className="bg-transparent outline-none w-full font-bold text-sm"
+                  value={email}
+                  autoComplete="email"
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </InputBox>
 
               <div className="group">
                 <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center gap-4 focus-within:border-blue-600 focus-within:bg-white transition-all shadow-sm">
@@ -372,29 +451,6 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-[#24292F] hover:bg-[#24292f]/90 text-white py-3.5 rounded-full font-bold text-sm shadow-md transition-all flex items-center justify-center gap-3 disabled:opacity-70 border border-white/10 mt-2 active:scale-95"
             >
-              <svg
-                className="w-5 h-5 bg-white rounded-full p-0.5"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-
               <span className="tracking-tight italic font-black uppercase text-[11px]">
                 Continue with Google
               </span>
@@ -419,6 +475,26 @@ export default function LoginPage() {
 
           <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-indigo-600" />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function InputBox({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode;
+  value?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="group">
+      <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center gap-4 focus-within:border-blue-600 focus-within:bg-white transition-all shadow-sm">
+        <div className="text-gray-400 group-focus-within:text-blue-600">
+          {icon}
+        </div>
+        {children}
       </div>
     </div>
   );

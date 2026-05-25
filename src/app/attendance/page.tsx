@@ -173,6 +173,64 @@ export default function AttendancePage() {
       notify("Verifying your live location... 📍");
 
       const userLocation = await getLocation();
+      
+      const locationCheck = await verifyOfficeRange(userLocation);
+      const getDistanceMeters = (
+        a: { lat: number; lng: number },
+        b: { lat: number; lng: number }
+      ) => {
+        const R = 6371000;
+        const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+        const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+        const lat1 = (a.lat * Math.PI) / 180;
+        const lat2 = (b.lat * Math.PI) / 180;
+      
+        const x =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      
+        return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+      };
+      
+      const getOfficeLocation = async () => {
+        if (userData?.officeLocation?.lat && userData?.officeLocation?.lng) {
+          return userData.officeLocation;
+        }
+      
+        if (!userData?.adminUid) return null;
+      
+        const adminSnap = await getDoc(doc(db, "employees", userData.adminUid));
+      
+        if (!adminSnap.exists()) return null;
+      
+        return adminSnap.data()?.officeLocation || null;
+      };
+      
+      const verifyOfficeRange = async (userLocation: LocationData) => {
+        const officeLocation = await getOfficeLocation();
+      
+        if (!officeLocation?.lat || !officeLocation?.lng) {
+          throw "Office location is not set. Please contact admin.";
+        }
+      
+        const radiusMeters = Number(officeLocation.radiusMeters || 100);
+      
+        const distance = getDistanceMeters(
+          { lat: userLocation.lat, lng: userLocation.lng },
+          { lat: officeLocation.lat, lng: officeLocation.lng }
+        );
+      
+        if (distance > radiusMeters) {
+          throw `You are outside office range. Distance: ${Math.round(
+            distance
+          )}m. Allowed range: ${radiusMeters}m.`;
+        }
+      
+        return {
+          distanceMeters: Math.round(distance),
+          radiusMeters,
+        };
+      };
       const attRef = doc(db, "attendance", `${user.uid}_${todayDate}`);
       const attSnap = await getDoc(attRef);
       const now = new Date();
@@ -204,6 +262,9 @@ export default function AttendancePage() {
             clockIn: now,
             clockInServerTime: serverTimestamp(),
             clockInLocation: userLocation,
+            clockInOfficeVerified: true,
+            clockInDistanceFromOfficeMeters: locationCheck.distanceMeters,
+            clockInAllowedOfficeRadiusMeters: locationCheck.radiusMeters,
             clockOut: null,
             clockOutLocation: null,
             workedMinutes: 0,
@@ -253,6 +314,9 @@ export default function AttendancePage() {
           clockOut: now,
           clockOutServerTime: serverTimestamp(),
           clockOutLocation: userLocation,
+          clockOutOfficeVerified: true,
+          clockOutDistanceFromOfficeMeters: locationCheck.distanceMeters,
+          clockOutAllowedOfficeRadiusMeters: locationCheck.radiusMeters,
           workedMinutes: stats.workedMinutes,
           overtimeMinutes: stats.overtimeMinutes,
           lateMinutes: stats.lateMinutes,
