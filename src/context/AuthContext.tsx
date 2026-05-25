@@ -88,6 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             adminUid: data.adminUid || uid,
             officeName: data.officeName || "AttendX",
             status: data.status || "active",
+            workspaceUid:
+  normalizeRole(data.role) === "Admin"
+    ? (data.uid || uid)
+    : (data.adminUid || uid),
           });
 
           return;

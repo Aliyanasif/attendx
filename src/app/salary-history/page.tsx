@@ -29,6 +29,8 @@ export default function SalaryHistory() {
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  
+
   useEffect(() => {
     if (authLoading || !user?.uid || userData?.role === "Staff") return;
 
@@ -36,7 +38,7 @@ export default function SalaryHistory() {
       try {
         const q = query(
           collection(db, "employees"),
-          where("adminUid", "==", user.uid)
+          where("adminUid", "==", workspaceUid)
         );
 
         const snap = await getDocs(q);
@@ -72,7 +74,7 @@ export default function SalaryHistory() {
       const q = query(
         collection(db, "salary_history"),
         where("employeeName", "==", emp.name),
-        where("adminUid", "==", user.uid),
+        where("adminUid", "==", workspaceUid),
         orderBy("disbursedAt", "desc")
       );
 

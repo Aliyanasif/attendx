@@ -81,6 +81,8 @@ const initialForm = {
   dutyHours: "9",
 };
 
+
+
 export default function ManageStaffPage() {
   const { userData, user, loading: authLoading } = useAuth();
 

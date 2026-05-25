@@ -72,17 +72,26 @@ export default function PayrollPage() {
       try {
         const empQuery = query(
           collection(db, "employees"),
-          where("adminUid", "==", userData.uid)
+          adminUid:
+  userData.workspaceUid ||
+  userData.adminUid ||
+  userData.uid,
         );
 
         const attQuery = query(
           collection(db, "attendance"),
-          where("adminUid", "==", userData.uid)
+          adminUid:
+  userData.workspaceUid ||
+  userData.adminUid ||
+  userData.uid,
         );
 
         const salQuery = query(
           collection(db, "salary_history"),
-          where("adminUid", "==", userData.uid)
+          adminUid:
+  userData.workspaceUid ||
+  userData.adminUid ||
+  userData.uid,
         );
 
         const [empSnap, attSnap, salSnap] = await Promise.all([
@@ -135,6 +144,8 @@ export default function PayrollPage() {
         a.employeeName === emp.name
       );
     });
+
+    
 
     let totalMinutes = 0;
     let validDays = 0;

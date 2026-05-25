@@ -12,6 +12,8 @@ export default function PerformancePage() {
   const [stats, setStats] = useState<any[]>([]);
   const [overallPunctuality, setOverallPunctuality] = useState(0);
 
+  
+
   if (authLoading) {
     return <div className="h-screen flex items-center justify-center text-gray-900"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
   }
@@ -36,9 +38,9 @@ export default function PerformancePage() {
     const fetchPerformance = async () => {
       try {
         // 1. Fetch Employees to get their actual shift timings
-        const empQuery = query(collection(db, "employees"), where("adminUid", "==", userData.uid));
+        const empQuery = query(collection(db, "employees"), where("adminUid", "==", workspaceUid));
         // 2. Fetch Attendance records
-        const attQuery = query(collection(db, "attendance"), where("adminUid", "==", userData.uid));
+        const attQuery = query(collection(db, "attendance"), where("adminUid", "==", workspaceUid));
         
         const [empSnap, attSnap] = await Promise.all([getDocs(empQuery), getDocs(attQuery)]);
         

@@ -53,6 +53,8 @@ export default function AttendanceManagement() {
   const [manualPunchOutTime, setManualPunchOutTime] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
 
+  
+
   const isTrialValid = () => {
     if (userData?.isPremium === false) return false;
     if (!userData?.createdAt) return false;
@@ -82,7 +84,10 @@ export default function AttendanceManagement() {
 
     setLoading(true);
 
-    const adminUid = userData.uid;
+    const adminUid =
+  userData.workspaceUid ||
+  userData.adminUid ||
+  userData.uid;
 
     const q = query(
       collection(db, "employees"),

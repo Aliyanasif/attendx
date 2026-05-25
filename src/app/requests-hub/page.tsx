@@ -35,6 +35,8 @@ export default function RequestsHub() {
   const [leaves, setLeaves] = useState<any[]>([]);
   const [resignations, setResignations] = useState<any[]>([]);
 
+
+  
   if (authLoading) {
     return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>;
   }
@@ -58,7 +60,7 @@ export default function RequestsHub() {
     // 1. Fetch Leaves (Filtered by Admin)
     const qLeaves = query(
       collection(db, "leaves"), 
-      where("adminUid", "==", user.uid),
+      where("adminUid", "==", workspaceUid),
       orderBy("submittedAt", "desc")
     );
     const unsubLeaves = onSnapshot(qLeaves, (snap) => {
@@ -68,7 +70,7 @@ export default function RequestsHub() {
     // 2. Fetch Resignations (Filtered by Admin)
     const qResign = query(
       collection(db, "resignations"), 
-      where("adminUid", "==", user.uid),
+      where("adminUid", "==", workspaceUid),
       orderBy("submittedAt", "desc")
     );
     const unsubResign = onSnapshot(qResign, (snap) => {
