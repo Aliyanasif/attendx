@@ -36,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           </SidebarProvider>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );
