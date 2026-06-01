@@ -2,6 +2,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { SidebarProvider } from "@/context/SidebarContext";
+import { Analytics } from "@vercel/analytics/next"
 import { Toaster } from "react-hot-toast"; 
 import SplashScreen from "@/components/SplashScreen";
 import LayoutLogic from "@/components/LayoutLogic"; // Hum isay client component banayenge
