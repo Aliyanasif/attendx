@@ -88,6 +88,7 @@ export default function Sidebar() {
         },
         { icon: Send, label: "Leave Portal", href: "/leaves" },
         { icon: MapPin, label: "Clock In/Out", href: "/attendance" },
+        { icon: CalendarIcon, label: "Full Calendar", href: "/calendar" },
         { icon: BarChart3, label: "Staff Performance", href: "/performance" },
         { icon: CreditCard, label: "Process Payroll", href: "/payroll" },
         { icon: History, label: "Salary History", href: "/salary-history" }

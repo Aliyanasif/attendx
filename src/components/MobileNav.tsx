@@ -70,6 +70,7 @@ export default function MobileNav() {
         { icon: ClipboardCheck, label: "Requests", href: "/requests-hub" },
         { icon: Send, label: "Leaves", href: "/leaves" },
         { icon: MapPin, label: "Punch", href: "/attendance" },
+        { icon: CalendarIcon, label: "Calendar", href: "/calendar" },
         { icon: BarChart3, label: "Stats", href: "/performance" },
         { icon: CreditCard, label: "Payroll", href: "/payroll" },
         { icon: History, label: "Salary", href: "/salary-history" }
@@ -145,7 +146,7 @@ export default function MobileNav() {
             </span>
             <span
               className={`text-[8px] font-bold uppercase tracking-widest mt-0.5 ${
-                pathname === "/profile" || pathname === "/profile-setup"
+                pathname === "/profile-setup" || pathname === "/profile-setup"
                   ? "text-blue-100"
                   : "text-blue-600"
               }`}

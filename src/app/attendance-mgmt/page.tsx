@@ -53,7 +53,9 @@ export default function AttendanceManagement() {
   const [manualPunchOutTime, setManualPunchOutTime] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
 
-  
+  const getAdminUid = () => {
+    return userData?.workspaceUid || userData?.adminUid || userData?.uid;
+  };
 
   const isTrialValid = () => {
     if (userData?.isPremium === false) return false;
@@ -84,10 +86,12 @@ export default function AttendanceManagement() {
 
     setLoading(true);
 
-    const adminUid =
-  userData.workspaceUid ||
-  userData.adminUid ||
-  userData.uid;
+    const adminUid = getAdminUid();
+
+    if (!adminUid) {
+      setLoading(false);
+      return;
+    }
 
     const q = query(
       collection(db, "employees"),
@@ -97,7 +101,11 @@ export default function AttendanceManagement() {
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        const data = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const data = snap.docs.map((document) => ({
+          id: document.id,
+          ...document.data(),
+        }));
+
         setEmployees(data);
         setLoading(false);
       },
@@ -109,12 +117,20 @@ export default function AttendanceManagement() {
     );
 
     return () => unsubscribe();
-  }, [authLoading, userData?.uid, userData?.role]);
+  }, [
+    authLoading,
+    userData?.uid,
+    userData?.role,
+    userData?.workspaceUid,
+    userData?.adminUid,
+  ]);
 
   useEffect(() => {
     if (view !== "calendar" || !selectedEmp || !userData?.uid) return;
 
-    const adminUid = userData.uid;
+    const adminUid = getAdminUid();
+
+    if (!adminUid) return;
 
     const q = query(
       collection(db, "attendance"),
@@ -125,49 +141,53 @@ export default function AttendanceManagement() {
       q,
       (snap) => {
         const attendanceData = snap.docs
-        .map((document) => {
-          const data = document.data();
-      
-          const matched =
-            data.employeeId === selectedEmp.id ||
-            data.employeeUid === selectedEmp.uid ||
-            data.uid === selectedEmp.uid ||
-            data.email === selectedEmp.email ||
-            data.employeeName === selectedEmp.name;
-      
-          if (!matched) return null;
-      
-          const clockInDate = data.clockIn?.toDate?.() || null;
-          const clockOutDate = data.clockOut?.toDate?.() || null;
-      
-          return {
-            id: document.id,
-            title: `IN: ${
-              clockInDate
-                ? clockInDate.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "N/A"
-            }`,
-            start: data.date,
-            extendedProps: {
-              docId: document.id,
-              fullData: data,
-              clockIn: clockInDate,
-              clockOut: clockOutDate,
-              inLocation: data.clockInLocation || null,
-              outLocation: data.clockOutLocation || null,
-              manualPunchOut: data.manualPunchOut || false,
-              workedMinutes: data.workedMinutes || 0,
-              overtimeMinutes: data.overtimeMinutes || 0,
-              lateMinutes: data.lateMinutes || 0,
-            },
-            backgroundColor: clockOutDate ? "#16a34a" : "#2563eb",
-            borderColor: clockOutDate ? "#16a34a" : "#2563eb",
-          };
-        })
-        .filter(Boolean);
+          .map((document) => {
+            const data = document.data();
+
+            const matched =
+              data.employeeId === selectedEmp.id ||
+              data.employeeUid === selectedEmp.uid ||
+              data.uid === selectedEmp.uid ||
+              data.email === selectedEmp.email ||
+              data.employeeEmail === selectedEmp.email ||
+              data.employeeName === selectedEmp.name ||
+              data.name === selectedEmp.name;
+
+            if (!matched) return null;
+
+            const clockInDate = data.clockIn?.toDate?.() || null;
+            const clockOutDate = data.clockOut?.toDate?.() || null;
+
+            return {
+              id: document.id,
+              title: `IN: ${
+                clockInDate
+                  ? clockInDate.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "N/A"
+              }`,
+              start: data.date,
+              extendedProps: {
+                docId: document.id,
+                fullData: data,
+                clockIn: clockInDate,
+                clockOut: clockOutDate,
+                inLocation: data.clockInLocation || null,
+                outLocation: data.clockOutLocation || null,
+                manualPunchOut: data.manualPunchOut || false,
+                workedMinutes: data.workedMinutes || 0,
+                overtimeMinutes: data.overtimeMinutes || 0,
+                lateMinutes: data.lateMinutes || 0,
+              },
+              backgroundColor: clockOutDate ? "#16a34a" : "#2563eb",
+              borderColor: clockOutDate ? "#16a34a" : "#2563eb",
+            };
+          })
+          .filter(Boolean);
+
+        setEvents(attendanceData);
       },
       (error) => {
         console.error("Attendance fetch error:", error);
@@ -176,7 +196,13 @@ export default function AttendanceManagement() {
     );
 
     return () => unsubscribe();
-  }, [selectedEmp, view, userData?.uid]);
+  }, [
+    selectedEmp,
+    view,
+    userData?.uid,
+    userData?.workspaceUid,
+    userData?.adminUid,
+  ]);
 
   const openCalendar = (emp: any) => {
     if (hasAccess) {
@@ -416,6 +442,15 @@ export default function AttendanceManagement() {
           {loading ? (
             <div className="flex justify-center py-20">
               <Loader2 className="animate-spin text-blue-600" size={40} />
+            </div>
+          ) : employees.length === 0 ? (
+            <div className="bg-white border border-gray-100 rounded-[35px] p-10 text-center shadow-sm">
+              <p className="font-black uppercase text-gray-900">
+                No staff found
+              </p>
+              <p className="text-sm font-bold text-gray-400 mt-2">
+                Employee records are not available for this admin workspace.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
